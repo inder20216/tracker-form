@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Process Tracker — MIS Command Center</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<link rel="stylesheet" href="assets/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
+<style>
+  body { overflow-y: auto; background: var(--bg);
+    background-image: radial-gradient(ellipse at 20% 0%, rgba(37,99,235,0.06) 0%, transparent 60%),
+                       radial-gradient(ellipse at 80% 20%, rgba(5,150,105,0.06) 0%, transparent 60%); }
+  .tf-wrap { max-width: 620px; margin: 0 auto; padding: 32px 20px 60px; }
+  .tf-brand { text-align: center; margin-bottom: 24px; }
+  .tf-brand i { font-size: 36px; color: var(--accent); }
+  .tf-brand h1 { font-size: 19px; font-weight: 800; margin-top: 8px; letter-spacing: -0.02em; }
+  .tf-brand p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tf-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; box-shadow: var(--shadow-lg); }
+  .tf-section-title { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 12px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+  .tf-section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+  .tf-section-hint { font-size: 10px; color: var(--muted); font-weight: 500; text-transform: none; letter-spacing: normal; margin-left: 4px; }
+  .tf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .tf-grid .full { grid-column: 1 / -1; }
+  .tf-field label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+  .tf-hidden { display: none !important; }
+  .tf-submit-row { margin-top: 24px; display: flex; align-items: center; gap: 12px; }
+  .tf-msg { font-size: 12px; padding: 10px 14px; border-radius: var(--radius-sm); margin-top: 14px; display: none; }
+  .tf-msg.show { display: block; }
+  .tf-msg.success { background: rgba(5,150,105,0.1); color: var(--accent2); border: 1px solid rgba(5,150,105,0.3); }
+  .tf-msg.error { background: rgba(220,38,38,0.1); color: var(--accent4); border: 1px solid rgba(220,38,38,0.3); }
+  .tf-need-process { font-size: 12px; color: var(--muted); font-style: italic; padding: 8px 0; }
+  .tf-auth-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: rgba(37,99,235,0.06); font-size: 13px; margin-bottom: 20px; }
+  .tf-auth-banner.signed-in { background: rgba(5,150,105,0.08); border-color: rgba(5,150,105,0.3); }
+  @media (max-width: 640px) { .tf-grid { grid-template-columns: 1fr; } .tf-auth-banner { flex-direction: column; align-items: stretch; } }
+</style>
+</head>
+<body>
+
+<div class="tf-wrap">
+  <div class="tf-brand">
+    <i class="ti ti-clipboard-list"></i>
+    <h1>Process Tracker</h1>
+    <p>Log Downtime, Appreciation, Escalation, Quality, or Training entries</p>
+  </div>
+
+  <div class="tf-card">
+    <div id="authBanner" class="tf-auth-banner">
+      <span id="authStatusText">Checking sign-in status…</span>
+      <button type="button" id="authActionBtn" class="btn btn-secondary">Sign in with Microsoft</button>
+    </div>
+    <form id="trackerForm">
+      <div class="tf-grid">
+        <div class="tf-field full">
+          <label>Tracker Type *</label>
+          <select class="form-select w-full" id="trackerType" required>
+            <option value="">Select type...</option>
+            <option value="Downtime">Downtime</option>
+            <option value="Appreciation">Appreciation</option>
+            <option value="Escalation">Escalation</option>
+            <option value="Quality">Quality</option>
+            <option value="Training">Training</option>
+          </select>
+        </div>
+        <div class="tf-field">
+          <label>Process Name *</label>
+          <select class="form-select w-full" id="processName" required>
+            <option value="">Select process...</option>
+            <option>Baxter</option><option>PSRI</option><option>ResMed</option><option>LOTS</option>
+            <option>ONDC</option><option>Infres</option><option>VMM</option><option>Nihon</option>
+          </select>
+        </div>
+        <div class="tf-field">
+          <label id="dateLabel">Date *</label>
+          <input type="date" class="form-input w-full" id="date" required>
+        </div>
+        <div class="tf-field full">
+          <label>Agent Name *</label>
+          <input type="text" class="form-input w-full" id="agentName" required>
+        </div>
+      </div>
+
+      <!-- Downtime: duration (via start/end) + reason dropdown + description -->
+      <div class="tf-group" data-type="Downtime">
+        <div class="tf-section-title"><i class="ti ti-plug-connected-x"></i> Downtime</div>
+        <div class="tf-grid">
+          <div class="tf-field"><label>Start Time *</label><input type="time" class="form-input w-full" id="startTime"></div>
+          <div class="tf-field"><label>End Time *</label><input type="time" class="form-input w-full" id="endTime"></div>
+          <div class="tf-field full"><label>Reason *</label>
+            <select class="form-select w-full" id="reasonCategory">
+              <option value="">—</option>
+              <option>Technical issues in System or VPN issues</option>
+              <option>IVR number down</option>
+              <option>Office was open late</option>
+              <option>Downtime due to riots</option>
+              <option>Downtime due to natural events.</option>
+              <option>On call challenges</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="tf-field full"><label>Description *</label><textarea class="form-input w-full" id="reasonDetail"></textarea></div>
+        </div>
+      </div>
+
+      <!-- Quality: process-specific scoring parameters + call reference -->
+      <div class="tf-group" data-type="Quality">
+        <div class="tf-section-title"><i class="ti ti-star"></i> Quality Scoring <span class="tf-section-hint" id="qualityProcessHint"></span></div>
+        <div class="tf-grid">
+          <div class="tf-field"><label>Call Transaction ID *</label><input type="text" class="form-input w-full" id="transactionId"></div>
+          <div class="tf-field"><label>Call Recording Link *</label><input type="text" class="form-input w-full" id="recordingUrl"></div>
+          <div class="tf-field"><label>Date of Audit *</label><input type="date" class="form-input w-full" id="dateOfAudit"></div>
+        </div>
+        <div id="qualityNeedsProcess" class="tf-need-process">Select a Process above to see this process's scoring parameters.</div>
+        <div class="tf-grid" id="qualityScoreFields"></div>
+        <div class="tf-grid" id="qualityTotalWrap" style="margin-top:14px;">
+          <div class="tf-field"><label>Total Score *</label><input type="number" step="0.01" class="form-input w-full" id="qualityOverallScore"></div>
+          <div class="tf-field"><label>Percentage</label><input type="text" class="form-input w-full" id="qualityPercentageDisplay" readonly></div>
+          <div class="tf-field full" style="font-size:11px;color:var(--muted);">
+            Auto-calculated (Hangup By: Agent = 0, Customer = 10; Fatal Error = Yes forces 0). Edit Total Score directly if you disagree with the auto result — e.g. an agent hangup that was actually justified.
+            <a href="#" id="qualityScoreResetLink">Reset to auto-calculated</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Training: type/reason dropdown + duration + description -->
+      <div class="tf-group" data-type="Training">
+        <div class="tf-section-title"><i class="ti ti-school"></i> Training</div>
+        <div class="tf-grid">
+          <div class="tf-field full"><label>Type of Training *</label>
+            <select class="form-select w-full" id="typeOfTraining">
+              <option value="">—</option>
+              <option>Process updates</option>
+              <option>Quality Feedback session</option>
+              <option>Soft skill session</option>
+              <option>Internal Discussion with Management</option>
+              <option>Downtime</option>
+              <option>Health concern</option>
+              <option>Office activities</option>
+              <option>Technical Issue</option>
+              <option>Office Celebration</option>
+              <option>Team Huddle</option>
+              <option>HR Call</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="tf-field"><label>Start Time *</label><input type="time" class="form-input w-full" id="trainStartTime"></div>
+          <div class="tf-field"><label>End Time *</label><input type="time" class="form-input w-full" id="trainEndTime"></div>
+          <div class="tf-field full"><label>Description *</label><textarea class="form-input w-full" id="description"></textarea></div>
+        </div>
+      </div>
+
+      <!-- Appreciation / Escalation: Process + Date + Agent (above) + total count for that agent/date -->
+      <div class="tf-group" data-type="Appreciation,Escalation">
+        <div class="tf-section-title"><i class="ti ti-hash"></i> Count</div>
+        <div class="tf-grid">
+          <div class="tf-field full">
+            <label>Total Count *</label>
+            <input type="number" min="1" step="1" class="form-input w-full" id="activityCount" placeholder="Total count for this agent on this date">
+          </div>
+        </div>
+      </div>
+
+      <div class="tf-submit-row">
+        <button type="submit" class="btn btn-primary" id="submitBtn" disabled><i class="ti ti-send"></i> Submit Entry</button>
+        <button type="reset" class="btn btn-secondary">Clear</button>
+      </div>
+      <div class="tf-msg" id="tfMsg"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+const WEBHOOK_URL = 'https://automation.openmindhelpline.com/webhook/unified-tracker-form';
+
+/* Microsoft login (MSAL Browser) — auto-fills who filled out the form (audited_by)
+   instead of a free-text name field. Same Azure AD app used elsewhere at Open Mind;
+   redirectUri is derived at runtime so it matches wherever this page is hosted —
+   that exact URL still needs to be added under Azure Portal > App Registrations >
+   this app > Authentication > Add a platform > Single-page application. */
+const msalConfig = {
+  auth: {
+    clientId: 'b8cda595-fd20-4d3c-a0e4-9cdf62af2028',
+    authority: 'https://login.microsoftonline.com/common',
+    redirectUri: window.location.origin + window.location.pathname
+  },
+  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+};
+const loginRequest = { scopes: ['User.Read', 'email', 'openid', 'profile'] };
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+let currentUser = null;
+
+function setSignedOutUI() {
+  currentUser = null;
+  const banner = document.getElementById('authBanner');
+  banner.classList.remove('signed-in');
+  document.getElementById('authStatusText').textContent = 'Sign in with your Microsoft account to submit entries.';
+  const btn = document.getElementById('authActionBtn');
+  btn.textContent = 'Sign in with Microsoft';
+  btn.onclick = handleSignIn;
+  document.getElementById('submitBtn').disabled = true;
+}
+
+function setSignedInUI(account) {
+  currentUser = { name: account.name || account.username, email: account.username };
+  const banner = document.getElementById('authBanner');
+  banner.classList.add('signed-in');
+  document.getElementById('authStatusText').textContent = 'Signed in as ' + currentUser.name + ' (' + currentUser.email + ')';
+  const btn = document.getElementById('authActionBtn');
+  btn.textContent = 'Sign out';
+  btn.onclick = handleSignOut;
+  document.getElementById('submitBtn').disabled = false;
+}
+
+async function handleSignIn() {
+  const statusText = document.getElementById('authStatusText');
+  try {
+    statusText.textContent = 'Signing in…';
+    const result = await msalInstance.loginPopup(loginRequest);
+    msalInstance.setActiveAccount(result.account);
+    setSignedInUI(result.account);
+  } catch (err) {
+    setSignedOutUI();
+    statusText.textContent = 'Sign-in failed: ' + err.message;
+  }
+}
+
+async function handleSignOut() {
+  const account = msalInstance.getActiveAccount();
+  try {
+    await msalInstance.logoutPopup({ account });
+  } catch (err) { /* proceed to local sign-out UI regardless */ }
+  setSignedOutUI();
+}
+
+async function initAuth() {
+  try {
+    await msalInstance.initialize();
+    await msalInstance.handleRedirectPromise();
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      msalInstance.setActiveAccount(accounts[0]);
+      setSignedInUI(accounts[0]);
+    } else {
+      setSignedOutUI();
+    }
+  } catch (err) {
+    setSignedOutUI();
+    document.getElementById('authStatusText').textContent = 'Sign-in unavailable: ' + err.message;
+  }
+}
+initAuth();
+
+/* Per-process Quality rubrics — matches each process's real historical audit sheet
+   exactly, including which extra fields (Fatal Error, Hangup By, Remarks, etc.)
+   that process actually uses. Overall Score / Percentage / Final Score / Total Score
+   are derived automatically from the numeric fields below, not entered manually. */
+const FATAL_YESNO = { id: 'fatal_error', label: 'Fatal Error', type: 'select', options: ['No', 'Yes'] };
+const HANGUP_AGENT_CUSTOMER = { id: 'hangup_by', label: 'Hangup By', type: 'select', options: ['Agent', 'Customer'] };
+const AREAS_IMPROVEMENT = { id: 'areas_of_improvement', label: 'Areas of Improvement', type: 'textarea' };
+const TRAINING_REQUIREMENT = { id: 'training_requirement', label: 'Training Requirement', type: 'textarea' };
+const TYPE_OF_CALL = { id: 'call_type', label: 'Type of Call', type: 'select', options: ['Inbound', 'Outbound'] };
+
+const FACILITY_RUBRIC = [ // Infres / VMM / Nihon share this rubric (from the "Facility" sheet)
+  { id: 'script', label: 'Script Adherence (0-10)' },
+  { id: 'domain', label: 'Domain Knowledge (0-10)' },
+  { id: 'soft', label: 'Soft Skills (0-10)' },
+  { id: 'accuracy', label: 'Accuracy of Resolution (0-10)' },
+  TYPE_OF_CALL,
+  FATAL_YESNO,
+  { id: 'crm', label: 'CRM / E-mail Tagging (0-10)' },
+  HANGUP_AGENT_CUSTOMER,
+  AREAS_IMPROVEMENT,
+  TRAINING_REQUIREMENT
+];
+const QUALITY_RUBRIC = {
+  Infres: FACILITY_RUBRIC, VMM: FACILITY_RUBRIC, Nihon: FACILITY_RUBRIC,
+  PSRI: FACILITY_RUBRIC,
+  ResMed: [
+    { id: 'opening_script', label: 'Call Opening / Script (Greetings/Self & Comp Intro/Script/Hold & Unhold & Transfer/Closing Statement) (0-10)' },
+    { id: 'process_knowledge', label: 'Process Knowledge/Protocols (RM-Domain/OM-Process Knowledge) (0-10)' },
+    { id: 'soft', label: 'Soft Skills (0-10)' },
+    { id: 'solution', label: 'Solution provided (0-10)' },
+    { id: 'crm', label: 'CRM Tagging (SFDC/SparkTg(Customer name)/Form) (0-10)' },
+    TYPE_OF_CALL,
+    { id: 'fatal', label: 'Fatal (Yes/No)', type: 'select', options: ['No', 'Yes'] },
+    { id: 'remarks', label: 'Remarks', type: 'textarea' }
+  ],
+  Baxter: [
+    { id: 'script', label: 'Script Adherence (0-10)' },
+    { id: 'domain', label: 'Domain Knowledge (0-10)' },
+    { id: 'call_type', label: 'Call Type', type: 'select', options: ['Inbound', 'Outbound'] },
+    { id: 'call_regarding', label: 'Call Regarding', type: 'select', options: [
+      'Scheme Call', 'Follow Up calls', 'Transfer set Changed', 'ITP Calls', 'PD4 Validation',
+      'Extraneal Validation', 'APD Validation', 'Enquiry', 'APD Rental', 'Escalations call'
+    ] },
+    { id: 'crm', label: 'CRM Tagging (0-10)' },
+    { id: 'soft', label: 'Soft Skills (0-10)' },
+    { id: 'resolution', label: 'Resolution Provided (0-10)' },
+    { id: 'call_hungup', label: 'Call Hung up', type: 'select', options: ['Agent', 'Customer'] },
+    FATAL_YESNO,
+    { id: 'remark', label: 'Remark', type: 'textarea' }
+  ],
+  LOTS: [
+    { id: 'script', label: 'Greetings and Script Adherence (0-10)' },
+    { id: 'domain', label: 'Domain Knowledge (0-10)' },
+    { id: 'soft', label: 'Soft Skills (0-10)' },
+    { id: 'accuracy', label: 'Accuracy of resolution (0-10)' },
+    { id: 'crm', label: 'CRM tagging (0-10)' },
+    TYPE_OF_CALL,
+    { id: 'call_hungby', label: 'Call Hung By Customer or Agent', type: 'select', options: ['Customer', 'Agent'] },
+    FATAL_YESNO,
+    { id: 'remarks', label: 'Remarks', type: 'textarea' }
+  ],
+  ONDC: [
+    { id: 'case_id', label: 'Case Id/Chat id', type: 'text' },
+    { id: 'conversation_type', label: 'Type of Conversation', type: 'select', options: ['Email', 'Chat'] },
+    { id: 'domain', label: 'Domain Knowledge (Yes/No)', type: 'select', options: ['Yes', 'No'] },
+    { id: 'sf_tagging', label: 'SF Tagging (0-10)' },
+    { id: 'first_response_time', label: 'First Response Time', type: 'text', placeholder: 'e.g. < 2 Hrs' },
+    { id: 'first_response_score', label: 'First Response Score (0-10)' },
+    { id: 'writing_skills', label: 'Email/Chat Writing Skills (0-10)' },
+    { id: 'opening_closing', label: 'Opening/closing Message (0-10)' },
+    { id: 'resolution', label: 'Resolution Provided (0-10)' },
+    { id: 'navigation', label: 'Navigation- on Salesforce (0-10)' },
+    FATAL_YESNO,
+    { id: 'fatal_reason', label: 'Fatal Reason', type: 'text' },
+    { id: 'remark', label: 'Remark', type: 'textarea' }
+  ]
+};
+
+// Rubric field ids that belong to a real quality_audit column rather than the
+// generic scores blob (mirrors how the historical Excel backfill split these
+// out — see gen_quality_backfill.py). Shared by the live score calculator below
+// and the submit handler.
+const ID_FIELD_MAP = {
+  fatal_error: 'fatalError', fatal: 'fatalError',
+  hangup_by: 'hangupBy', call_hungup: 'hangupBy', call_hungby: 'hangupBy',
+  call_type: 'typeOfCall', conversation_type: 'typeOfCall',
+  areas_of_improvement: 'areasOfImprovement',
+  training_requirement: 'trainingRequirement',
+  remark: 'remarks', remarks: 'remarks', fatal_reason: 'remarks',
+  case_id: 'callRegarding', call_regarding: 'callRegarding'
+};
+
+let qualityScoreDirty = false;
+
+function computeQualityScore() {
+  let sum = 0, count = 0, fatalYes = false;
+  document.querySelectorAll('#qualityScoreFields [id^="q_"]').forEach(el => {
+    const fieldId = el.id.slice(2);
+    const target = ID_FIELD_MAP[fieldId];
+    if (target === 'fatalError') {
+      if (el.value.trim().toLowerCase() === 'yes') fatalYes = true;
+      return;
+    }
+    if (target === 'hangupBy') {
+      if (el.value) { sum += el.value.trim().toLowerCase() === 'agent' ? 0 : 10; count++; }
+      return;
+    }
+    if (!target && el.type === 'number' && el.value !== '') { sum += Number(el.value); count++; }
+  });
+  let overall = count > 0 ? sum : null;
+  let pct = count > 0 ? Math.round((sum / (count * 10)) * 10000) / 10000 : null;
+  if (fatalYes) { overall = 0; pct = 0; }
+  return { overall, pct, count };
+}
+
+function refreshQualityScoreDisplay(forceRecalc) {
+  const scoreEl = document.getElementById('qualityOverallScore');
+  const pctEl = document.getElementById('qualityPercentageDisplay');
+  const { overall, count } = computeQualityScore();
+  if (forceRecalc || !qualityScoreDirty) {
+    scoreEl.value = overall === null ? '' : overall;
+  }
+  const scoreVal = parseFloat(scoreEl.value);
+  const maxPossible = count * 10;
+  pctEl.value = (maxPossible > 0 && Number.isFinite(scoreVal))
+    ? (Math.round((scoreVal / maxPossible) * 10000) / 100) + '%'
+    : '';
+}
+
+function renderQualityFields(processName) {
+  const needsProcess = document.getElementById('qualityNeedsProcess');
+  const scoreContainer = document.getElementById('qualityScoreFields');
+  const hint = document.getElementById('qualityProcessHint');
+  scoreContainer.innerHTML = '';
+  qualityScoreDirty = false;
+  document.getElementById('qualityOverallScore').value = '';
+  document.getElementById('qualityPercentageDisplay').value = '';
+
+  const rubric = processName ? QUALITY_RUBRIC[processName] : null;
+  if (!rubric) {
+    needsProcess.style.display = 'block';
+    hint.textContent = '';
+    return;
+  }
+  needsProcess.style.display = 'none';
+  hint.textContent = `(${processName}'s criteria)`;
+
+  rubric.forEach(field => {
+    const wrap = document.createElement('div');
+    wrap.className = 'tf-field' + (field.type === 'textarea' ? ' full' : '');
+    const label = document.createElement('label');
+    label.textContent = field.label + ' *';
+    wrap.appendChild(label);
+    let input;
+    if (field.type === 'select') {
+      input = document.createElement('select');
+      input.className = 'form-select w-full';
+      input.innerHTML = '<option value="">—</option>' + field.options.map(o => `<option>${o}</option>`).join('');
+    } else if (field.type === 'text') {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-input w-full';
+      if (field.placeholder) input.placeholder = field.placeholder;
+    } else if (field.type === 'textarea') {
+      input = document.createElement('textarea');
+      input.className = 'form-input w-full';
+    } else {
+      input = document.createElement('input');
+      input.type = 'number';
+      input.min = 0; input.max = 10;
+      input.className = 'form-input w-full';
+    }
+    input.id = 'q_' + field.id;
+    input.dataset.scoreLabel = field.label.replace(/\s*\(.*?\)\s*$/, '').trim();
+    wrap.appendChild(input);
+    scoreContainer.appendChild(wrap);
+  });
+}
+
+const typeSelect = document.getElementById('trackerType');
+const processSelect = document.getElementById('processName');
+const groups = document.querySelectorAll('.tf-group');
+
+function updateVisibility() {
+  const t = typeSelect.value;
+  groups.forEach(g => {
+    const types = g.dataset.type.split(',');
+    g.classList.toggle('tf-hidden', !(t && types.includes(t)));
+  });
+  document.getElementById('dateLabel').textContent = (t === 'Quality' ? 'Date of Call' : 'Date') + ' *';
+  if (t === 'Quality') renderQualityFields(processSelect.value);
+}
+typeSelect.addEventListener('change', updateVisibility);
+processSelect.addEventListener('change', () => {
+  if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
+});
+updateVisibility();
+
+['input', 'change'].forEach(evt => {
+  document.getElementById('qualityScoreFields').addEventListener(evt, () => refreshQualityScoreDisplay(false));
+});
+document.getElementById('qualityOverallScore').addEventListener('input', () => {
+  qualityScoreDirty = true;
+  refreshQualityScoreDisplay(false);
+});
+document.getElementById('qualityScoreResetLink').addEventListener('click', (e) => {
+  e.preventDefault();
+  qualityScoreDirty = false;
+  refreshQualityScoreDisplay(true);
+});
+
+document.getElementById('trackerForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('tfMsg');
+  const btn = document.getElementById('submitBtn');
+  msg.className = 'tf-msg';
+
+  if (!currentUser) {
+    msg.textContent = 'Please sign in with Microsoft before submitting.';
+    msg.className = 'tf-msg show error';
+    return;
+  }
+
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const type = val('trackerType');
+
+  // Type-specific fields aren't marked with the native `required` attribute because
+  // they live inside a .tf-group that gets display:none'd when a different Tracker
+  // Type is picked — a hidden required field silently blocks submission with no
+  // visible error. Validating explicitly here instead so users get a clear message.
+  const missingFields = [];
+  const requireField = (id, label) => { if (!val(id)) missingFields.push(label); };
+  if (type === 'Downtime') {
+    requireField('startTime', 'Start Time');
+    requireField('endTime', 'End Time');
+    requireField('reasonCategory', 'Reason');
+    requireField('reasonDetail', 'Description');
+  } else if (type === 'Training') {
+    requireField('typeOfTraining', 'Type of Training');
+    requireField('trainStartTime', 'Start Time');
+    requireField('trainEndTime', 'End Time');
+    requireField('description', 'Description');
+  } else if (type === 'Quality') {
+    requireField('transactionId', 'Call Transaction ID');
+    requireField('recordingUrl', 'Call Recording Link');
+    requireField('dateOfAudit', 'Date of Audit');
+    document.querySelectorAll('#qualityScoreFields [id^="q_"]').forEach(el => {
+      if (!el.value.trim()) missingFields.push(el.dataset.scoreLabel);
+    });
+    requireField('qualityOverallScore', 'Total Score');
+  } else if (type === 'Appreciation' || type === 'Escalation') {
+    requireField('activityCount', 'Total Count');
+  }
+  if (missingFields.length) {
+    msg.textContent = 'Please fill in: ' + missingFields.join(', ');
+    msg.className = 'tf-msg show error';
+    return;
+  }
+
+  const scores = {};
+  const mapped = {};
+  document.querySelectorAll('#qualityScoreFields [id^="q_"]').forEach(el => {
+    if (el.value === '') return;
+    const fieldId = el.id.slice(2);
+    const target = ID_FIELD_MAP[fieldId];
+    if (target === 'remarks') {
+      mapped.remarks = mapped.remarks ? mapped.remarks + ' | ' + el.value : el.value;
+    } else if (target === 'callRegarding') {
+      mapped.callRegarding = fieldId === 'case_id' ? ('Case/Chat ID: ' + el.value) : el.value;
+    } else if (target) {
+      mapped[target] = el.value;
+    } else {
+      scores[el.dataset.scoreLabel] = el.value;
+    }
+  });
+
+  let overallScoreOverride = null, percentageOverride = null;
+  if (type === 'Quality') {
+    const scoreVal = parseFloat(val('qualityOverallScore'));
+    if (Number.isFinite(scoreVal)) {
+      overallScoreOverride = scoreVal;
+      const { count } = computeQualityScore();
+      const maxPossible = count * 10;
+      percentageOverride = maxPossible > 0 ? Math.round((scoreVal / maxPossible) * 10000) / 10000 : null;
+    }
+  }
+
+  const payload = {
+    trackerType: type,
+    processName: val('processName'),
+    date: val('date'),
+    agentName: val('agentName'),
+    auditedBy: currentUser.name,
+    auditedByEmail: currentUser.email,
+    startTime: type === 'Training' ? (val('trainStartTime') || null) : (val('startTime') || null),
+    endTime: type === 'Training' ? (val('trainEndTime') || null) : (val('endTime') || null),
+    reasonCategory: val('reasonCategory') || null,
+    reasonDetail: val('reasonDetail') || null,
+    typeOfTraining: val('typeOfTraining') || null,
+    description: val('description') || null,
+    transactionId: val('transactionId') || null,
+    recordingUrl: val('recordingUrl') || null,
+    dateOfAudit: type === 'Quality' ? (val('dateOfAudit') || null) : null,
+    count: (type === 'Appreciation' || type === 'Escalation') ? (parseInt(val('activityCount'), 10) || null) : null,
+    fatalError: mapped.fatalError || null,
+    hangupBy: mapped.hangupBy || null,
+    typeOfCall: mapped.typeOfCall || null,
+    callRegarding: mapped.callRegarding || null,
+    areasOfImprovement: mapped.areasOfImprovement || null,
+    trainingRequirement: mapped.trainingRequirement || null,
+    remarks: mapped.remarks || null,
+    overallScoreOverride,
+    percentageOverride,
+    scores: Object.keys(scores).length ? scores : null
+  };
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i> Submitting...';
+  try {
+    const res = await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Server responded ' + res.status);
+    msg.textContent = 'Entry submitted successfully.';
+    msg.className = 'tf-msg show success';
+    document.getElementById('trackerForm').reset();
+    updateVisibility();
+  } catch (err) {
+    msg.textContent = 'Failed to submit: ' + err.message;
+    msg.className = 'tf-msg show error';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-send"></i> Submit Entry';
+  }
+});
+</script>
+</body>
+</html>
