@@ -34,6 +34,8 @@
     padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
     background: rgba(37,99,235,0.06); font-size: 13px; margin-bottom: 20px; }
   .tf-auth-banner.signed-in { background: rgba(5,150,105,0.08); border-color: rgba(5,150,105,0.3); }
+  #formFieldset { border: none; margin: 0; padding: 0; }
+  #formFieldset:disabled { opacity: 0.5; pointer-events: none; }
   @media (max-width: 640px) { .tf-grid { grid-template-columns: 1fr; } .tf-auth-banner { flex-direction: column; align-items: stretch; } }
 </style>
 </head>
@@ -52,6 +54,7 @@
       <button type="button" id="authActionBtn" class="btn btn-secondary">Sign in with Microsoft</button>
     </div>
     <form id="trackerForm">
+      <fieldset id="formFieldset" disabled>
       <div class="tf-grid">
         <div class="tf-field full">
           <label>Tracker Type *</label>
@@ -163,9 +166,10 @@
       </div>
 
       <div class="tf-submit-row">
-        <button type="submit" class="btn btn-primary" id="submitBtn" disabled><i class="ti ti-send"></i> Submit Entry</button>
+        <button type="submit" class="btn btn-primary" id="submitBtn"><i class="ti ti-send"></i> Submit Entry</button>
         <button type="reset" class="btn btn-secondary">Clear</button>
       </div>
+      </fieldset>
       <div class="tf-msg" id="tfMsg"></div>
     </form>
   </div>
@@ -199,7 +203,7 @@ function setSignedOutUI() {
   const btn = document.getElementById('authActionBtn');
   btn.textContent = 'Sign in with Microsoft';
   btn.onclick = handleSignIn;
-  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('formFieldset').disabled = true;
 }
 
 function setSignedInUI(account) {
@@ -210,7 +214,7 @@ function setSignedInUI(account) {
   const btn = document.getElementById('authActionBtn');
   btn.textContent = 'Sign out';
   btn.onclick = handleSignOut;
-  document.getElementById('submitBtn').disabled = false;
+  document.getElementById('formFieldset').disabled = false;
 }
 
 async function handleSignIn() {
