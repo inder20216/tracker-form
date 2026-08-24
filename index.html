@@ -466,7 +466,8 @@ function renderQualityFields(processName) {
       rubric = QUALITY_RUBRIC[processName];
     }
   }
-  callFieldsWrap.classList.toggle('tf-hidden', hasEmailOption && document.getElementById('auditType').value === 'Email');
+  const isCallless = (hasEmailOption && document.getElementById('auditType').value === 'Email') || processName === 'ONDC';
+  callFieldsWrap.classList.toggle('tf-hidden', isCallless);
 
   if (!rubric) {
     needsProcess.style.display = 'block';
@@ -591,7 +592,8 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
   } else if (type === 'Quality') {
     const hasEmailOption = !!QUALITY_EMAIL_RUBRIC[val('processName')];
     if (hasEmailOption) requireField('auditType', 'Audit Type');
-    if (!(hasEmailOption && val('auditType') === 'Email')) {
+    const isCallless = (hasEmailOption && val('auditType') === 'Email') || val('processName') === 'ONDC';
+    if (!isCallless) {
       requireField('transactionId', 'Call Transaction ID');
       requireField('recordingUrl', 'Call Recording Link');
     }
