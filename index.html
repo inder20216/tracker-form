@@ -110,9 +110,21 @@
       <!-- Quality: process-specific scoring parameters + call reference -->
       <div class="tf-group" data-type="Quality">
         <div class="tf-section-title"><i class="ti ti-star"></i> Quality Scoring <span class="tf-section-hint" id="qualityProcessHint"></span></div>
-        <div class="tf-grid">
+        <div class="tf-grid tf-hidden" id="qualityAuditTypeWrap">
+          <div class="tf-field full">
+            <label>Audit Type *</label>
+            <select class="form-select w-full" id="auditType">
+              <option value="">—</option>
+              <option value="Call">Call Audit</option>
+              <option value="Email">Email Audit</option>
+            </select>
+          </div>
+        </div>
+        <div class="tf-grid" id="qualityCallFieldsWrap">
           <div class="tf-field"><label>Call Transaction ID *</label><input type="text" class="form-input w-full" id="transactionId"></div>
           <div class="tf-field"><label>Call Recording Link *</label><input type="text" class="form-input w-full" id="recordingUrl"></div>
+        </div>
+        <div class="tf-grid">
           <div class="tf-field"><label>Date of Audit *</label><input type="date" class="form-input w-full" id="dateOfAudit"></div>
         </div>
         <div id="qualityNeedsProcess" class="tf-need-process">Select a Process above to see this process's scoring parameters.</div>
@@ -162,6 +174,31 @@
             <label>Total Count *</label>
             <input type="number" min="1" step="1" class="form-input w-full" id="activityCount" placeholder="Total count for this agent on this date">
           </div>
+          <div class="tf-field full">
+            <label>Received Via *</label>
+            <select class="form-select w-full" id="receivedVia">
+              <option value="">—</option>
+              <option>Call</option>
+              <option>Email</option>
+              <option>Chat</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="tf-grid tf-hidden" id="receivedViaCallFields">
+          <div class="tf-field"><label>Phone Number *</label><input type="text" class="form-input w-full" id="viaPhoneNumber"></div>
+          <div class="tf-field"><label>Call Transaction ID *</label><input type="text" class="form-input w-full" id="viaCallTxnId"></div>
+          <div class="tf-field full"><label>Call Link *</label><input type="text" class="form-input w-full" id="viaCallLink"></div>
+        </div>
+
+        <div class="tf-grid tf-hidden" id="receivedViaEmailFields">
+          <div class="tf-field full"><label>Email Subject *</label><input type="text" class="form-input w-full" id="viaEmailSubject"></div>
+          <div class="tf-field full"><label>Sender *</label><input type="text" class="form-input w-full" id="viaSender"></div>
+        </div>
+
+        <div class="tf-grid tf-hidden" id="receivedViaChatFields">
+          <div class="tf-field"><label>Chat ID *</label><input type="text" class="form-input w-full" id="viaChatId"></div>
+          <div class="tf-field full"><label>Chat Subject *</label><input type="text" class="form-input w-full" id="viaChatSubject"></div>
         </div>
       </div>
 
@@ -334,6 +371,24 @@ const QUALITY_RUBRIC = {
   ]
 };
 
+// Email Audit rubric — a second audit type for processes that also handle email
+// support (Infres, VMM, Nihon, LOTS), alongside their existing call-audit rubric.
+const EMAIL_RUBRIC = [
+  { id: 'mail_received_from', label: 'Mail Received From', type: 'text' },
+  { id: 'type_of_mail', label: 'Type of Mail', type: 'select', options: ['Closed', 'Logged', 'Reminder', 'Update', 'Other'] },
+  { id: 'complaint_no', label: 'Complaint Number', type: 'text' },
+  { id: 'call_regarding', label: 'Subject Line', type: 'text' },
+  { id: 'understanding_email', label: 'Understanding of process and e-mail (0-10)' },
+  { id: 'email_structure', label: 'Email structure and professionalism (0-10)' },
+  { id: 'accuracy_resolution', label: 'Accuracy and resolution in reply (0-10)' },
+  { id: 'crm', label: 'CRM / E-mail Tagging (0-10)' },
+  FATAL_YESNO,
+  AREAS_IMPROVEMENT,
+  TRAINING_REQUIREMENT,
+  { id: 'remark', label: 'Overall Feedback', type: 'textarea' }
+];
+const QUALITY_EMAIL_RUBRIC = { Infres: EMAIL_RUBRIC, VMM: EMAIL_RUBRIC, Nihon: EMAIL_RUBRIC, LOTS: EMAIL_RUBRIC };
+
 // Rubric field ids that belong to a real quality_audit column rather than the
 // generic scores blob (mirrors how the historical Excel backfill split these
 // out — see gen_quality_backfill.py). Shared by the live score calculator below
@@ -341,11 +396,12 @@ const QUALITY_RUBRIC = {
 const ID_FIELD_MAP = {
   fatal_error: 'fatalError', fatal: 'fatalError',
   hangup_by: 'hangupBy', call_hungup: 'hangupBy', call_hungby: 'hangupBy',
-  call_type: 'typeOfCall', conversation_type: 'typeOfCall',
+  call_type: 'typeOfCall', conversation_type: 'typeOfCall', type_of_mail: 'typeOfCall',
   areas_of_improvement: 'areasOfImprovement',
   training_requirement: 'trainingRequirement',
   remark: 'remarks', remarks: 'remarks', fatal_reason: 'remarks',
-  case_id: 'callRegarding', call_regarding: 'callRegarding'
+  case_id: 'callRegarding', call_regarding: 'callRegarding',
+  mail_received_from: 'mailReceivedFrom', complaint_no: 'complaintNumber'
 };
 
 let qualityScoreDirty = false;
@@ -389,19 +445,41 @@ function renderQualityFields(processName) {
   const needsProcess = document.getElementById('qualityNeedsProcess');
   const scoreContainer = document.getElementById('qualityScoreFields');
   const hint = document.getElementById('qualityProcessHint');
+  const auditTypeWrap = document.getElementById('qualityAuditTypeWrap');
+  const callFieldsWrap = document.getElementById('qualityCallFieldsWrap');
   scoreContainer.innerHTML = '';
   qualityScoreDirty = false;
   document.getElementById('qualityOverallScore').value = '';
   document.getElementById('qualityPercentageDisplay').value = '';
 
-  const rubric = processName ? QUALITY_RUBRIC[processName] : null;
+  const hasEmailOption = processName && !!QUALITY_EMAIL_RUBRIC[processName];
+  auditTypeWrap.classList.toggle('tf-hidden', !hasEmailOption);
+  if (!hasEmailOption) document.getElementById('auditType').value = '';
+
+  let rubric = null;
+  if (processName) {
+    if (hasEmailOption) {
+      const auditType = document.getElementById('auditType').value;
+      if (auditType === 'Email') rubric = QUALITY_EMAIL_RUBRIC[processName];
+      else if (auditType === 'Call') rubric = QUALITY_RUBRIC[processName];
+    } else {
+      rubric = QUALITY_RUBRIC[processName];
+    }
+  }
+  callFieldsWrap.classList.toggle('tf-hidden', hasEmailOption && document.getElementById('auditType').value === 'Email');
+
   if (!rubric) {
     needsProcess.style.display = 'block';
+    needsProcess.textContent = !processName
+      ? "Select a Process above to see this process's scoring parameters."
+      : 'Select an Audit Type above to see the scoring parameters.';
     hint.textContent = '';
     return;
   }
   needsProcess.style.display = 'none';
-  hint.textContent = `(${processName}'s criteria)`;
+  hint.textContent = hasEmailOption
+    ? `(${processName}'s ${document.getElementById('auditType').value} Audit criteria)`
+    : `(${processName}'s criteria)`;
 
   rubric.forEach(field => {
     const wrap = document.createElement('div');
@@ -439,6 +517,14 @@ const typeSelect = document.getElementById('trackerType');
 const processSelect = document.getElementById('processName');
 const groups = document.querySelectorAll('.tf-group');
 
+function updateReceivedViaVisibility() {
+  const via = document.getElementById('receivedVia').value;
+  document.getElementById('receivedViaCallFields').classList.toggle('tf-hidden', via !== 'Call');
+  document.getElementById('receivedViaEmailFields').classList.toggle('tf-hidden', via !== 'Email');
+  document.getElementById('receivedViaChatFields').classList.toggle('tf-hidden', via !== 'Chat');
+}
+document.getElementById('receivedVia').addEventListener('change', updateReceivedViaVisibility);
+
 function updateVisibility() {
   const t = typeSelect.value;
   groups.forEach(g => {
@@ -447,9 +533,13 @@ function updateVisibility() {
   });
   document.getElementById('dateLabel').textContent = (t === 'Quality' ? 'Date of Call' : 'Date') + ' *';
   if (t === 'Quality') renderQualityFields(processSelect.value);
+  if (t === 'Appreciation' || t === 'Escalation') updateReceivedViaVisibility();
 }
 typeSelect.addEventListener('change', updateVisibility);
 processSelect.addEventListener('change', () => {
+  if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
+});
+document.getElementById('auditType').addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
 });
 updateVisibility();
@@ -499,8 +589,12 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     requireField('trainEndTime', 'End Time');
     requireField('description', 'Description');
   } else if (type === 'Quality') {
-    requireField('transactionId', 'Call Transaction ID');
-    requireField('recordingUrl', 'Call Recording Link');
+    const hasEmailOption = !!QUALITY_EMAIL_RUBRIC[val('processName')];
+    if (hasEmailOption) requireField('auditType', 'Audit Type');
+    if (!(hasEmailOption && val('auditType') === 'Email')) {
+      requireField('transactionId', 'Call Transaction ID');
+      requireField('recordingUrl', 'Call Recording Link');
+    }
     requireField('dateOfAudit', 'Date of Audit');
     document.querySelectorAll('#qualityScoreFields [id^="q_"]').forEach(el => {
       if (!el.value.trim()) missingFields.push(el.dataset.scoreLabel);
@@ -508,6 +602,19 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     requireField('qualityOverallScore', 'Total Score');
   } else if (type === 'Appreciation' || type === 'Escalation') {
     requireField('activityCount', 'Total Count');
+    requireField('receivedVia', 'Received Via');
+    const via = val('receivedVia');
+    if (via === 'Call') {
+      requireField('viaPhoneNumber', 'Phone Number');
+      requireField('viaCallTxnId', 'Call Transaction ID');
+      requireField('viaCallLink', 'Call Link');
+    } else if (via === 'Email') {
+      requireField('viaEmailSubject', 'Email Subject');
+      requireField('viaSender', 'Sender');
+    } else if (via === 'Chat') {
+      requireField('viaChatId', 'Chat ID');
+      requireField('viaChatSubject', 'Chat Subject');
+    }
   }
   if (missingFields.length) {
     msg.textContent = 'Please fill in: ' + missingFields.join(', ');
@@ -543,6 +650,24 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     }
   }
 
+  let viaTransactionId = null, viaRecordingUrl = null, viaContactNumber = null, viaSubject = null,
+      viaReceivedVia = null, viaAppreciationReceivedFrom = null, viaEscalationReceivedFrom = null;
+  if (type === 'Appreciation' || type === 'Escalation') {
+    viaReceivedVia = val('receivedVia') || null;
+    if (viaReceivedVia === 'Call') {
+      viaContactNumber = val('viaPhoneNumber') || null;
+      viaTransactionId = val('viaCallTxnId') || null;
+      viaRecordingUrl = val('viaCallLink') || null;
+    } else if (viaReceivedVia === 'Email') {
+      viaSubject = val('viaEmailSubject') || null;
+      const sender = val('viaSender') || null;
+      if (type === 'Appreciation') viaAppreciationReceivedFrom = sender; else viaEscalationReceivedFrom = sender;
+    } else if (viaReceivedVia === 'Chat') {
+      viaTransactionId = val('viaChatId') || null;
+      viaSubject = val('viaChatSubject') || null;
+    }
+  }
+
   const payload = {
     trackerType: type,
     processName: val('processName'),
@@ -556,10 +681,15 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     reasonDetail: val('reasonDetail') || null,
     typeOfTraining: val('typeOfTraining') || null,
     description: val('description') || null,
-    transactionId: val('transactionId') || null,
-    recordingUrl: val('recordingUrl') || null,
+    transactionId: type === 'Quality' ? (val('transactionId') || null) : viaTransactionId,
+    recordingUrl: type === 'Quality' ? (val('recordingUrl') || null) : viaRecordingUrl,
     dateOfAudit: type === 'Quality' ? (val('dateOfAudit') || null) : null,
     count: (type === 'Appreciation' || type === 'Escalation') ? (parseInt(val('activityCount'), 10) || null) : null,
+    receivedVia: viaReceivedVia,
+    contactNumber: viaContactNumber,
+    subject: viaSubject,
+    appreciationReceivedFrom: viaAppreciationReceivedFrom,
+    escalationReceivedFrom: viaEscalationReceivedFrom,
     fatalError: mapped.fatalError || null,
     hangupBy: mapped.hangupBy || null,
     typeOfCall: mapped.typeOfCall || null,
@@ -567,6 +697,8 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     areasOfImprovement: mapped.areasOfImprovement || null,
     trainingRequirement: mapped.trainingRequirement || null,
     remarks: mapped.remarks || null,
+    mailReceivedFrom: mapped.mailReceivedFrom || null,
+    complaintNumber: mapped.complaintNumber || null,
     overallScoreOverride,
     percentageOverride,
     scores: Object.keys(scores).length ? scores : null
