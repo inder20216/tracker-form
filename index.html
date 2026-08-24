@@ -130,11 +130,10 @@
         <div id="qualityNeedsProcess" class="tf-need-process">Select a Process above to see this process's scoring parameters.</div>
         <div class="tf-grid" id="qualityScoreFields"></div>
         <div class="tf-grid" id="qualityTotalWrap" style="margin-top:14px;">
-          <div class="tf-field"><label>Total Score *</label><input type="number" step="0.01" class="form-input w-full" id="qualityOverallScore"></div>
+          <div class="tf-field"><label>Total Score</label><input type="number" step="0.01" class="form-input w-full" id="qualityOverallScore" readonly></div>
           <div class="tf-field"><label>Percentage</label><input type="text" class="form-input w-full" id="qualityPercentageDisplay" readonly></div>
           <div class="tf-field full" style="font-size:11px;color:var(--muted);">
-            Auto-calculated (Hangup By: Agent = 0, Customer = 10; Fatal Error = Yes forces 0). Edit Total Score directly if you disagree with the auto result — e.g. an agent hangup that was actually justified.
-            <a href="#" id="qualityScoreResetLink">Reset to auto-calculated</a>
+            Auto-calculated from the parameters above (Hangup By: Agent = 0, Customer = 10; Fatal Error = Yes forces 0). Not editable.
           </div>
         </div>
       </div>
@@ -404,8 +403,6 @@ const ID_FIELD_MAP = {
   mail_received_from: 'mailReceivedFrom', complaint_no: 'complaintNumber'
 };
 
-let qualityScoreDirty = false;
-
 function computeQualityScore() {
   let sum = 0, count = 0, fatalYes = false;
   document.querySelectorAll('#qualityScoreFields [id^="q_"]').forEach(el => {
@@ -427,18 +424,12 @@ function computeQualityScore() {
   return { overall, pct, count };
 }
 
-function refreshQualityScoreDisplay(forceRecalc) {
+function refreshQualityScoreDisplay() {
   const scoreEl = document.getElementById('qualityOverallScore');
   const pctEl = document.getElementById('qualityPercentageDisplay');
-  const { overall, count } = computeQualityScore();
-  if (forceRecalc || !qualityScoreDirty) {
-    scoreEl.value = overall === null ? '' : overall;
-  }
-  const scoreVal = parseFloat(scoreEl.value);
-  const maxPossible = count * 10;
-  pctEl.value = (maxPossible > 0 && Number.isFinite(scoreVal))
-    ? (Math.round((scoreVal / maxPossible) * 10000) / 100) + '%'
-    : '';
+  const { overall, pct } = computeQualityScore();
+  scoreEl.value = overall === null ? '' : overall;
+  pctEl.value = pct === null ? '' : (Math.round(pct * 10000) / 100) + '%';
 }
 
 function renderQualityFields(processName) {
@@ -448,7 +439,6 @@ function renderQualityFields(processName) {
   const auditTypeWrap = document.getElementById('qualityAuditTypeWrap');
   const callFieldsWrap = document.getElementById('qualityCallFieldsWrap');
   scoreContainer.innerHTML = '';
-  qualityScoreDirty = false;
   document.getElementById('qualityOverallScore').value = '';
   document.getElementById('qualityPercentageDisplay').value = '';
 
@@ -546,16 +536,7 @@ document.getElementById('auditType').addEventListener('change', () => {
 updateVisibility();
 
 ['input', 'change'].forEach(evt => {
-  document.getElementById('qualityScoreFields').addEventListener(evt, () => refreshQualityScoreDisplay(false));
-});
-document.getElementById('qualityOverallScore').addEventListener('input', () => {
-  qualityScoreDirty = true;
-  refreshQualityScoreDisplay(false);
-});
-document.getElementById('qualityScoreResetLink').addEventListener('click', (e) => {
-  e.preventDefault();
-  qualityScoreDirty = false;
-  refreshQualityScoreDisplay(true);
+  document.getElementById('qualityScoreFields').addEventListener(evt, () => refreshQualityScoreDisplay());
 });
 
 document.getElementById('trackerForm').addEventListener('submit', async (e) => {
@@ -601,7 +582,6 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     document.querySelectorAll('#qualityScoreFields [id^="q_"]').forEach(el => {
       if (!el.value.trim()) missingFields.push(el.dataset.scoreLabel);
     });
-    requireField('qualityOverallScore', 'Total Score');
   } else if (type === 'Appreciation' || type === 'Escalation') {
     requireField('activityCount', 'Total Count');
     requireField('receivedVia', 'Received Via');
@@ -640,17 +620,6 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
       scores[el.dataset.scoreLabel] = el.value;
     }
   });
-
-  let overallScoreOverride = null, percentageOverride = null;
-  if (type === 'Quality') {
-    const scoreVal = parseFloat(val('qualityOverallScore'));
-    if (Number.isFinite(scoreVal)) {
-      overallScoreOverride = scoreVal;
-      const { count } = computeQualityScore();
-      const maxPossible = count * 10;
-      percentageOverride = maxPossible > 0 ? Math.round((scoreVal / maxPossible) * 10000) / 10000 : null;
-    }
-  }
 
   let viaTransactionId = null, viaRecordingUrl = null, viaContactNumber = null, viaSubject = null,
       viaReceivedVia = null, viaAppreciationReceivedFrom = null, viaEscalationReceivedFrom = null;
@@ -701,8 +670,6 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     remarks: mapped.remarks || null,
     mailReceivedFrom: mapped.mailReceivedFrom || null,
     complaintNumber: mapped.complaintNumber || null,
-    overallScoreOverride,
-    percentageOverride,
     scores: Object.keys(scores).length ? scores : null
   };
 
