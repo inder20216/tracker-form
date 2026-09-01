@@ -220,6 +220,10 @@
           <div class="tf-field"><label>Chat ID *</label><input type="text" class="form-input w-full" id="viaChatId"></div>
           <div class="tf-field full"><label>Chat Subject *</label><input type="text" class="form-input w-full" id="viaChatSubject"></div>
         </div>
+
+        <div class="tf-grid">
+          <div class="tf-field full"><label>Remarks</label><textarea class="form-input w-full" id="activityRemarks" rows="2" placeholder="Optional notes"></textarea></div>
+        </div>
       </div>
 
       <div class="tf-submit-row">
@@ -705,7 +709,7 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     callRegarding: mapped.callRegarding || null,
     areasOfImprovement: mapped.areasOfImprovement || null,
     trainingRequirement: mapped.trainingRequirement || null,
-    remarks: mapped.remarks || null,
+    remarks: (type === 'Appreciation' || type === 'Escalation') ? (val('activityRemarks') || null) : (mapped.remarks || null),
     mailReceivedFrom: mapped.mailReceivedFrom || null,
     complaintNumber: mapped.complaintNumber || null,
     closureType: type === 'Conversion' ? (val('closureType') || null) : null,
