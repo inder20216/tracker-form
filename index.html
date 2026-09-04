@@ -45,7 +45,7 @@
   <div class="tf-brand">
     <i class="ti ti-clipboard-list"></i>
     <h1>Process Tracker</h1>
-    <p>Log Downtime, Appreciation, Escalation, Quality, or Training entries</p>
+    <p>Log Downtime, Appreciation, Escalation, Quality, Training, Conversion, or Email Productivity entries</p>
   </div>
 
   <div class="tf-card">
@@ -66,6 +66,7 @@
             <option value="Quality">Quality</option>
             <option value="Training">Training</option>
             <option value="Conversion">Conversion</option>
+            <option value="Email Productivity">Email Productivity</option>
           </select>
         </div>
         <div class="tf-field">
@@ -183,6 +184,19 @@
           </div>
           <div class="tf-field"><label>Mobile Number *</label><input type="text" class="form-input w-full" id="conversionMobile"></div>
           <div class="tf-field full"><label>Email *</label><input type="email" class="form-input w-full" id="conversionEmail"></div>
+        </div>
+      </div>
+
+      <!-- Email Productivity: ResMed only — one count per agent/day, going into the
+           same email_tagged_daily table Baxter's Outlook-tagging workflow feeds. -->
+      <div class="tf-group" data-type="Email Productivity">
+        <div class="tf-section-title"><i class="ti ti-mail"></i> Email Productivity</div>
+        <div id="emailProdNotResmed" class="tf-need-process">Email Productivity tracking is only available for ResMed.</div>
+        <div class="tf-grid" id="emailProdFields">
+          <div class="tf-field full">
+            <label>Emails Sent *</label>
+            <input type="number" min="0" step="1" class="form-input w-full" id="emailCount" placeholder="Total emails sent by this agent on this date">
+          </div>
         </div>
       </div>
 
@@ -547,6 +561,12 @@ function updateConversionVisibility() {
   document.getElementById('conversionFields').classList.toggle('tf-hidden', !isResmed);
 }
 
+function updateEmailProdVisibility() {
+  const isResmed = processSelect.value === 'ResMed';
+  document.getElementById('emailProdNotResmed').style.display = isResmed ? 'none' : 'block';
+  document.getElementById('emailProdFields').classList.toggle('tf-hidden', !isResmed);
+}
+
 function updateVisibility() {
   const t = typeSelect.value;
   groups.forEach(g => {
@@ -557,11 +577,13 @@ function updateVisibility() {
   if (t === 'Quality') renderQualityFields(processSelect.value);
   if (t === 'Appreciation' || t === 'Escalation') updateReceivedViaVisibility();
   if (t === 'Conversion') updateConversionVisibility();
+  if (t === 'Email Productivity') updateEmailProdVisibility();
 }
 typeSelect.addEventListener('change', updateVisibility);
 processSelect.addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
   if (typeSelect.value === 'Conversion') updateConversionVisibility();
+  if (typeSelect.value === 'Email Productivity') updateEmailProdVisibility();
 });
 document.getElementById('auditType').addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
@@ -639,6 +661,13 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     requireField('closureType', 'Closure Type');
     requireField('conversionMobile', 'Mobile Number');
     requireField('conversionEmail', 'Email');
+  } else if (type === 'Email Productivity') {
+    if (val('processName') !== 'ResMed') {
+      msg.textContent = 'Email Productivity tracking is only available for ResMed.';
+      msg.className = 'tf-msg show error';
+      return;
+    }
+    requireField('emailCount', 'Emails Sent');
   }
   if (missingFields.length) {
     msg.textContent = 'Please fill in: ' + missingFields.join(', ');
@@ -715,6 +744,7 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     closureType: type === 'Conversion' ? (val('closureType') || null) : null,
     conversionMobile: type === 'Conversion' ? (val('conversionMobile') || null) : null,
     conversionEmail: type === 'Conversion' ? (val('conversionEmail') || null) : null,
+    emailCount: type === 'Email Productivity' && val('emailCount') !== '' ? parseInt(val('emailCount'), 10) : null,
     scores: Object.keys(scores).length ? scores : null
   };
 
