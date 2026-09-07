@@ -36,7 +36,14 @@
   .tf-auth-banner.signed-in { background: rgba(5,150,105,0.08); border-color: rgba(5,150,105,0.3); }
   #formFieldset { border: none; margin: 0; padding: 0; }
   #formFieldset:disabled { opacity: 0.5; pointer-events: none; }
-  @media (max-width: 640px) { .tf-grid { grid-template-columns: 1fr; } .tf-auth-banner { flex-direction: column; align-items: stretch; } }
+  #lastSubmissionsPanel { margin-bottom: 20px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--surface2); }
+  #lastSubmissionsPanel .ls-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  #lastSubmissionsPanel .ls-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 12px; border-top: 1px solid var(--border); }
+  #lastSubmissionsPanel .ls-row:first-of-type { border-top: none; }
+  #lastSubmissionsPanel .ls-type { font-weight: 700; color: var(--accent); min-width: 88px; flex-shrink: 0; }
+  #lastSubmissionsPanel .ls-detail { color: var(--text); flex: 1; }
+  #lastSubmissionsPanel .ls-when { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  @media (max-width: 640px) { .tf-grid { grid-template-columns: 1fr; } .tf-auth-banner { flex-direction: column; align-items: stretch; } #lastSubmissionsPanel .ls-row { flex-wrap: wrap; } }
 </style>
 </head>
 <body>
@@ -53,6 +60,7 @@
       <span id="authStatusText">Checking sign-in status…</span>
       <button type="button" id="authActionBtn" class="btn btn-secondary">Sign in with Microsoft</button>
     </div>
+    <div id="lastSubmissionsPanel" class="tf-hidden"></div>
     <form id="trackerForm">
       <fieldset id="formFieldset" disabled>
       <div class="tf-grid">
@@ -253,6 +261,7 @@
 
 <script>
 const WEBHOOK_URL = 'https://automation.openmindhelpline.com/webhook/unified-tracker-form';
+const LAST_SUBMISSIONS_URL = 'https://automation.openmindhelpline.com/webhook/tracker-last-submissions';
 
 /* Microsoft login (MSAL Browser) — auto-fills who filled out the form (audited_by)
    instead of a free-text name field. Same Azure AD app used elsewhere at Open Mind;
@@ -280,6 +289,59 @@ function setSignedOutUI() {
   btn.textContent = 'Sign in with Microsoft';
   btn.onclick = handleSignIn;
   document.getElementById('formFieldset').disabled = true;
+  const panel = document.getElementById('lastSubmissionsPanel');
+  panel.classList.add('tf-hidden');
+  panel.innerHTML = '';
+}
+
+const TRACKER_TYPE_LABELS = {
+  Downtime: 'Downtime', Appreciation: 'Appreciation', Escalation: 'Escalation',
+  Quality: 'Quality', Training: 'Training', Conversion: 'Conversion'
+};
+
+function timeAgo(isoLike) {
+  if (!isoLike) return '';
+  const then = new Date(String(isoLike).replace(' ', 'T'));
+  if (isNaN(then)) return '';
+  const diffMin = Math.round((Date.now() - then.getTime()) / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return diffMin + 'm ago';
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return diffHr + 'h ago';
+  return Math.round(diffHr / 24) + 'd ago';
+}
+
+/* Shows what this signed-in user last submitted, one row per tracker type
+   (Email Productivity excluded — email_tagged_daily has no submitter column
+   to look this up by). Refreshed on sign-in and again after each submission
+   so it always reflects the latest state. */
+async function loadLastSubmissions() {
+  const panel = document.getElementById('lastSubmissionsPanel');
+  if (!currentUser) { panel.classList.add('tf-hidden'); return; }
+  try {
+    const url = `${LAST_SUBMISSIONS_URL}?auditedBy=${encodeURIComponent(currentUser.name)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Last-submissions API ${res.status}`);
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+    if (!rows.length) {
+      panel.innerHTML = '<div class="ls-title">Your last submissions</div><div class="ls-row" style="border-top:none;color:var(--muted);">No entries found yet.</div>';
+      panel.classList.remove('tf-hidden');
+      return;
+    }
+    const byType = new Map(rows.map(r => [r.tracker_type, r]));
+    const html = Object.keys(TRACKER_TYPE_LABELS).map(type => {
+      const r = byType.get(type);
+      if (!r) return '';
+      const detail = [r.process_name, r.agent_name, r.detail].filter(Boolean).join(' · ');
+      return `<div class="ls-row"><span class="ls-type">${TRACKER_TYPE_LABELS[type]}</span><span class="ls-detail">${detail}</span><span class="ls-when">${timeAgo(r.submitted_at)}</span></div>`;
+    }).join('');
+    panel.innerHTML = '<div class="ls-title">Your last submissions</div>' + (html || '<div class="ls-row" style="border-top:none;color:var(--muted);">No entries found yet.</div>');
+    panel.classList.remove('tf-hidden');
+  } catch (err) {
+    console.error('loadLastSubmissions failed:', err);
+    panel.classList.add('tf-hidden');
+  }
 }
 
 function setSignedInUI(account) {
@@ -291,6 +353,7 @@ function setSignedInUI(account) {
   btn.textContent = 'Sign out';
   btn.onclick = handleSignOut;
   document.getElementById('formFieldset').disabled = false;
+  loadLastSubmissions();
 }
 
 async function handleSignIn() {
@@ -763,6 +826,9 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     msg.className = 'tf-msg show success';
     document.getElementById('trackerForm').reset();
     updateVisibility();
+    // The webhook responds the instant it receives the request, before its
+    // MySQL insert actually runs -- give that a moment to land before refreshing.
+    setTimeout(loadLastSubmissions, 1500);
   } catch (err) {
     msg.textContent = 'Failed to submit: ' + err.message;
     msg.className = 'tf-msg show error';
