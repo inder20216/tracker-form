@@ -187,11 +187,12 @@
         </div>
       </div>
 
-      <!-- Email Productivity: ResMed only — one count per agent/day, going into the
-           same email_tagged_daily table Baxter's Outlook-tagging workflow feeds. -->
+      <!-- Email Productivity: ResMed + Facility (Infres/VMM/Nihon) — one count per
+           agent/day, going into the same email_tagged_daily table Baxter's
+           Outlook-tagging workflow feeds. -->
       <div class="tf-group" data-type="Email Productivity">
         <div class="tf-section-title"><i class="ti ti-mail"></i> Email Productivity</div>
-        <div id="emailProdNotResmed" class="tf-need-process">Email Productivity tracking is only available for ResMed.</div>
+        <div id="emailProdNotResmed" class="tf-need-process">Email Productivity tracking is only available for ResMed, Infres, VMM, and Nihon.</div>
         <div class="tf-grid" id="emailProdFields">
           <div class="tf-field full">
             <label>Emails Sent *</label>
@@ -561,10 +562,11 @@ function updateConversionVisibility() {
   document.getElementById('conversionFields').classList.toggle('tf-hidden', !isResmed);
 }
 
+const EMAIL_PROD_PROCESSES = ['ResMed', 'Infres', 'VMM', 'Nihon'];
 function updateEmailProdVisibility() {
-  const isResmed = processSelect.value === 'ResMed';
-  document.getElementById('emailProdNotResmed').style.display = isResmed ? 'none' : 'block';
-  document.getElementById('emailProdFields').classList.toggle('tf-hidden', !isResmed);
+  const allowed = EMAIL_PROD_PROCESSES.includes(processSelect.value);
+  document.getElementById('emailProdNotResmed').style.display = allowed ? 'none' : 'block';
+  document.getElementById('emailProdFields').classList.toggle('tf-hidden', !allowed);
 }
 
 function updateVisibility() {
@@ -662,8 +664,8 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     requireField('conversionMobile', 'Mobile Number');
     requireField('conversionEmail', 'Email');
   } else if (type === 'Email Productivity') {
-    if (val('processName') !== 'ResMed') {
-      msg.textContent = 'Email Productivity tracking is only available for ResMed.';
+    if (!EMAIL_PROD_PROCESSES.includes(val('processName'))) {
+      msg.textContent = 'Email Productivity tracking is only available for ResMed, Infres, VMM, and Nihon.';
       msg.className = 'tf-msg show error';
       return;
     }
