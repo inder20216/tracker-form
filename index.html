@@ -821,7 +821,9 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error('Server responded ' + res.status);
+    let resBody = null;
+    try { resBody = await res.json(); } catch (e) { /* non-JSON response, ignore */ }
+    if (!res.ok) throw new Error((resBody && resBody.message) ? resBody.message : ('Server responded ' + res.status));
     msg.textContent = 'Entry submitted successfully.';
     msg.className = 'tf-msg show success';
     document.getElementById('trackerForm').reset();
