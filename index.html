@@ -417,8 +417,13 @@ const FACILITY_RUBRIC = [ // Infres / VMM / Nihon share this rubric (from the "F
   AREAS_IMPROVEMENT,
   TRAINING_REQUIREMENT
 ];
+// Infres/VMM/Nihon's Call audit also needs a Complaint Number field (already
+// present on their Email audit rubric below, same id/column -- just wasn't on
+// the Call side). PSRI shares FACILITY_RUBRIC too but wasn't asked for this,
+// so it gets its own variant rather than changing the base array.
+const FACILITY_RUBRIC_WITH_COMPLAINT = [...FACILITY_RUBRIC, { id: 'complaint_no', label: 'Complaint Number', type: 'text' }];
 const QUALITY_RUBRIC = {
-  Infres: FACILITY_RUBRIC, VMM: FACILITY_RUBRIC, Nihon: FACILITY_RUBRIC,
+  Infres: FACILITY_RUBRIC_WITH_COMPLAINT, VMM: FACILITY_RUBRIC_WITH_COMPLAINT, Nihon: FACILITY_RUBRIC_WITH_COMPLAINT,
   PSRI: FACILITY_RUBRIC,
   ResMed: [
     { id: 'opening_script', label: 'Call Opening / Script (Greetings/Self & Comp Intro/Script/Hold & Unhold & Transfer/Closing Statement) (0-10)' },
