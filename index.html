@@ -405,7 +405,7 @@ const AREAS_IMPROVEMENT = { id: 'areas_of_improvement', label: 'Areas of Improve
 const TRAINING_REQUIREMENT = { id: 'training_requirement', label: 'Training Requirement', type: 'textarea' };
 const TYPE_OF_CALL = { id: 'call_type', label: 'Type of Call', type: 'select', options: ['Inbound', 'Outbound'] };
 
-const FACILITY_RUBRIC = [ // Infres / VMM / Nihon share this rubric (from the "Facility" sheet)
+const FACILITY_RUBRIC = [ // Infres / VMM / Nihon / PSRI share this rubric (from the "Facility" sheet)
   { id: 'script', label: 'Script Adherence (0-10)' },
   { id: 'domain', label: 'Domain Knowledge (0-10)' },
   { id: 'soft', label: 'Soft Skills (0-10)' },
@@ -415,7 +415,10 @@ const FACILITY_RUBRIC = [ // Infres / VMM / Nihon share this rubric (from the "F
   { id: 'crm', label: 'CRM / E-mail Tagging (0-10)' },
   HANGUP_AGENT_CUSTOMER,
   AREAS_IMPROVEMENT,
-  TRAINING_REQUIREMENT
+  TRAINING_REQUIREMENT,
+  // Every other process's Call audit rubric (ResMed/Baxter/LOTS/ONDC) has a
+  // Remarks field -- this one was missing it, for all 4 processes sharing it.
+  { id: 'remarks', label: 'Remarks', type: 'textarea' }
 ];
 // Infres/VMM/Nihon's Call audit also needs a Complaint Number field (already
 // present on their Email audit rubric below, same id/column -- just wasn't on
