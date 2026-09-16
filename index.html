@@ -625,16 +625,16 @@ function renderQualityFields(processName) {
 // Process-wise active agent roster -- a dropdown instead of free text kills
 // the exact class of typo/duplicate-identity problem (trailing spaces,
 // truncated names, short-form vs full-form spellings) that turned into a
-// one-off quality_audit cleanup this session. ResMed and ONDC aren't listed
-// yet -- their Agent Name field falls back to free text until their rosters
-// are provided.
+// one-off quality_audit cleanup this session.
 const AGENTS_BY_PROCESS = {
   Baxter: ['Ansha', 'Komala', 'Mouli', 'Rashmi', 'Sarita'],
   PSRI: ['Abhishek Raj', 'Abhishek Sharma', 'Anchal Singh', 'Kavneet Kaur', 'Monika Rani', 'Sameer', 'Shivani khandelwal', 'Suraj'],
   LOTS: ['Akshat Sharma', 'Kajal Bhagel', 'Navjot Singh', 'Piyush Sharma', 'Suvika Chauhan', 'Vivek Prajapati'],
   Infres: ['Monika Kumari', 'Rishi Chaudhari'],
   VMM: ['Mahima Mishra', 'Rahul Pandey', 'Sachin Yadav', 'Sanskar Tiwari', 'Yogesh Malik'],
-  Nihon: ['Anish', 'Somansh', 'Yakoob']
+  Nihon: ['Anish', 'Somansh', 'Yakoob'],
+  ResMed: ['Avijit Dey', 'Gulshan Khan', 'Kumkum', 'Sagarika Bose'],
+  ONDC: ['Asha Yadav', 'MD NIZAM MANSOORI', 'Manjur', 'Sahil D', 'Sahil K', 'Shweta Kumari']
 };
 
 function renderAgentOptions(processName) {
