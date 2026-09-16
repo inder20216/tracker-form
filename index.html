@@ -91,7 +91,9 @@
         </div>
         <div class="tf-field full">
           <label>Agent Name *</label>
-          <input type="text" class="form-input w-full" id="agentName" required>
+          <select class="form-select w-full" id="agentName" required>
+            <option value="">Select process first...</option>
+          </select>
         </div>
       </div>
 
@@ -422,9 +424,14 @@ const FACILITY_RUBRIC = [ // Infres / VMM / Nihon / PSRI share this rubric (from
 ];
 // Infres/VMM/Nihon's Call audit also needs a Complaint Number field (already
 // present on their Email audit rubric below, same id/column -- just wasn't on
-// the Call side). PSRI shares FACILITY_RUBRIC too but wasn't asked for this,
-// so it gets its own variant rather than changing the base array.
-const FACILITY_RUBRIC_WITH_COMPLAINT = [...FACILITY_RUBRIC, { id: 'complaint_no', label: 'Complaint Number', type: 'text' }];
+// the Call side), plus a Call/Query Regarding dropdown (reuses the same
+// call_regarding id/column Baxter and ONDC already use, just with Facility's
+// own option set). PSRI shares FACILITY_RUBRIC too but wasn't asked for
+// either of these, so it gets its own variant rather than changing the base array.
+const FACILITY_RUBRIC_WITH_COMPLAINT = [...FACILITY_RUBRIC,
+  { id: 'complaint_no', label: 'Complaint Number', type: 'text' },
+  { id: 'call_regarding', label: 'Call/Query Regarding', type: 'select', options: ['Logged', 'Process Enquiry', 'Case Resolved', 'Non-Relevant'] }
+];
 const QUALITY_RUBRIC = {
   Infres: FACILITY_RUBRIC_WITH_COMPLAINT, VMM: FACILITY_RUBRIC_WITH_COMPLAINT, Nihon: FACILITY_RUBRIC_WITH_COMPLAINT,
   PSRI: FACILITY_RUBRIC,
@@ -615,6 +622,45 @@ function renderQualityFields(processName) {
   });
 }
 
+// Process-wise active agent roster -- a dropdown instead of free text kills
+// the exact class of typo/duplicate-identity problem (trailing spaces,
+// truncated names, short-form vs full-form spellings) that turned into a
+// one-off quality_audit cleanup this session. ResMed and ONDC aren't listed
+// yet -- their Agent Name field falls back to free text until their rosters
+// are provided.
+const AGENTS_BY_PROCESS = {
+  Baxter: ['Ansha', 'Komala', 'Mouli', 'Rashmi', 'Sarita'],
+  PSRI: ['Abhishek Raj', 'Abhishek Sharma', 'Anchal Singh', 'Kavneet Kaur', 'Monika Rani', 'Sameer', 'Shivani khandelwal', 'Suraj'],
+  LOTS: ['Akshat Sharma', 'Kajal Bhagel', 'Navjot Singh', 'Piyush Sharma', 'Suvika Chauhan', 'Vivek Prajapati'],
+  Infres: ['Monika Kumari', 'Rishi Chaudhari'],
+  VMM: ['Mahima Mishra', 'Rahul Pandey', 'Sachin Yadav', 'Sanskar Tiwari', 'Yogesh Malik'],
+  Nihon: ['Anish', 'Somansh', 'Yakoob']
+};
+
+function renderAgentOptions(processName) {
+  const sel = document.getElementById('agentName');
+  const prevValue = sel.value;
+  const agents = AGENTS_BY_PROCESS[processName];
+  if (!agents) {
+    // No roster on file yet for this process (ResMed/ONDC) -- fall back to a
+    // free-text field instead of an empty, unusable dropdown.
+    if (sel.tagName === 'SELECT') {
+      const input = document.createElement('input');
+      input.type = 'text'; input.className = 'form-input w-full'; input.id = 'agentName'; input.required = true;
+      if (prevValue) input.value = prevValue;
+      sel.replaceWith(input);
+    }
+    return;
+  }
+  if (sel.tagName !== 'SELECT') {
+    const select = document.createElement('select');
+    select.className = 'form-select w-full'; select.id = 'agentName'; select.required = true;
+    sel.replaceWith(select);
+  }
+  const el = document.getElementById('agentName');
+  el.innerHTML = '<option value="">Select agent...</option>' + agents.map(a => `<option ${a === prevValue ? 'selected' : ''}>${a}</option>`).join('');
+}
+
 const typeSelect = document.getElementById('trackerType');
 const processSelect = document.getElementById('processName');
 const groups = document.querySelectorAll('.tf-group');
@@ -654,6 +700,7 @@ function updateVisibility() {
 }
 typeSelect.addEventListener('change', updateVisibility);
 processSelect.addEventListener('change', () => {
+  renderAgentOptions(processSelect.value);
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
   if (typeSelect.value === 'Conversion') updateConversionVisibility();
   if (typeSelect.value === 'Email Productivity') updateEmailProdVisibility();
