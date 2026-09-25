@@ -52,7 +52,7 @@
   <div class="tf-brand">
     <i class="ti ti-clipboard-list"></i>
     <h1>Process Tracker</h1>
-    <p>Log Downtime, Appreciation, Escalation, Quality, Training, Conversion, or Email Productivity entries</p>
+    <p>Log Downtime, Appreciation, Escalation, Quality, Training, Conversion, Email Productivity, or Agent Name Mapping entries</p>
   </div>
 
   <div class="tf-card">
@@ -75,6 +75,7 @@
             <option value="Training">Training</option>
             <option value="Conversion">Conversion</option>
             <option value="Email Productivity">Email Productivity</option>
+            <option value="Agent Name Mapping">Agent Name Mapping</option>
           </select>
         </div>
         <div class="tf-field">
@@ -85,11 +86,11 @@
             <option>ONDC</option><option>Infres</option><option>VMM</option><option>Nihon</option>
           </select>
         </div>
-        <div class="tf-field">
+        <div class="tf-field" id="dateFieldWrap">
           <label id="dateLabel">Date *</label>
           <input type="date" class="form-input w-full" id="date" required>
         </div>
-        <div class="tf-field full">
+        <div class="tf-field full" id="agentNameFieldWrap">
           <label>Agent Name *</label>
           <select class="form-select w-full" id="agentName" required>
             <option value="">Select process first...</option>
@@ -212,6 +213,31 @@
         </div>
       </div>
 
+      <!-- Agent Name Mapping: ONDC only — agents keep a different (often
+           unrelated/pseudonymous) display name in Salesforce so they aren't
+           personally identifiable if feedback comes in negative. This maps
+           that Salesforce name to the real SparkTG identity so reports can
+           reconcile the two systems. Append-only: every submission adds a
+           new row (no update/delete) so historical reports keep resolving
+           against whichever mapping was active at the time, while new
+           reports automatically pick up the latest one for that agent. -->
+      <div class="tf-group" data-type="Agent Name Mapping">
+        <div class="tf-section-title"><i class="ti ti-user-check"></i> Agent Name Mapping</div>
+        <div id="mappingNotOndc" class="tf-need-process">Agent Name Mapping is only available for ONDC.</div>
+        <div class="tf-grid" id="mappingFields">
+          <div class="tf-field full">
+            <label>SparkTG Agent Name *</label>
+            <select class="form-select w-full" id="mappingSparktgAgent">
+              <option value="">Select ONDC as Process to load agents...</option>
+            </select>
+          </div>
+          <div class="tf-field full">
+            <label>Salesforce Agent Name *</label>
+            <input type="text" class="form-input w-full" id="mappingSalesforceAgent" placeholder="Exact display name as it appears in Salesforce">
+          </div>
+        </div>
+      </div>
+
       <!-- Appreciation / Escalation: Process + Date + Agent (above) + total count for that agent/date -->
       <div class="tf-group" data-type="Appreciation,Escalation">
         <div class="tf-section-title"><i class="ti ti-hash"></i> Count</div>
@@ -265,6 +291,7 @@
 <script>
 const WEBHOOK_URL = 'https://automation.openmindhelpline.com/webhook/unified-tracker-form';
 const LAST_SUBMISSIONS_URL = 'https://automation.openmindhelpline.com/webhook/tracker-last-submissions';
+const ONDC_AGENT_NAMES_URL = 'https://automation.openmindhelpline.com/webhook/tracker-ondc-agent-names';
 
 /* Microsoft login (MSAL Browser) — auto-fills who filled out the form (audited_by)
    instead of a free-text name field. Same Azure AD app used elsewhere at Open Mind;
@@ -687,6 +714,41 @@ function updateEmailProdVisibility() {
   document.getElementById('emailProdFields').classList.toggle('tf-hidden', !allowed);
 }
 
+// Agent Name Mapping: SparkTG agent names are fetched live (not a hardcoded
+// roster like AGENTS_BY_PROCESS) so a new/changed agent shows up here as soon
+// as they appear in the synced data, with no code deploy needed. Cached per
+// page load -- the list only changes daily at most.
+let ondcAgentNamesCache = null;
+async function fetchOndcAgentNames() {
+  if (ondcAgentNamesCache) return ondcAgentNamesCache;
+  const sel = document.getElementById('mappingSparktgAgent');
+  sel.innerHTML = '<option value="">Loading agents…</option>';
+  try {
+    const res = await fetch(ONDC_AGENT_NAMES_URL);
+    if (!res.ok) throw new Error(`Agent names API ${res.status}`);
+    const data = await res.json();
+    const names = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+    ondcAgentNamesCache = names;
+    return names;
+  } catch (err) {
+    console.error('fetchOndcAgentNames failed:', err);
+    sel.innerHTML = '<option value="">Failed to load — try again</option>';
+    return [];
+  }
+}
+async function renderMappingAgentDropdown() {
+  const sel = document.getElementById('mappingSparktgAgent');
+  const names = await fetchOndcAgentNames();
+  if (!names.length) { sel.innerHTML = '<option value="">No recent ONDC agents found</option>'; return; }
+  sel.innerHTML = '<option value="">Select agent...</option>' + names.map(n => `<option>${n}</option>`).join('');
+}
+function updateMappingVisibility() {
+  const isOndc = processSelect.value === 'ONDC';
+  document.getElementById('mappingNotOndc').style.display = isOndc ? 'none' : 'block';
+  document.getElementById('mappingFields').classList.toggle('tf-hidden', !isOndc);
+  if (isOndc) renderMappingAgentDropdown();
+}
+
 function updateVisibility() {
   const t = typeSelect.value;
   groups.forEach(g => {
@@ -694,10 +756,21 @@ function updateVisibility() {
     g.classList.toggle('tf-hidden', !(t && types.includes(t)));
   });
   document.getElementById('dateLabel').textContent = (t === 'Quality' ? 'Date of Call' : t === 'Conversion' ? 'Payment Date' : 'Date') + ' *';
+  // Agent Name Mapping doesn't use the shared Date/Agent Name fields at the
+  // top -- it has its own SparkTG dropdown, and the row is timestamped
+  // automatically. Hide them AND drop the native `required` attribute, or a
+  // hidden-but-required field silently blocks submission.
+  const isMapping = t === 'Agent Name Mapping';
+  document.getElementById('dateFieldWrap').classList.toggle('tf-hidden', isMapping);
+  document.getElementById('date').required = !isMapping;
+  document.getElementById('agentNameFieldWrap').classList.toggle('tf-hidden', isMapping);
+  const agentEl = document.getElementById('agentName');
+  if (agentEl) agentEl.required = !isMapping;
   if (t === 'Quality') renderQualityFields(processSelect.value);
   if (t === 'Appreciation' || t === 'Escalation') updateReceivedViaVisibility();
   if (t === 'Conversion') updateConversionVisibility();
   if (t === 'Email Productivity') updateEmailProdVisibility();
+  if (t === 'Agent Name Mapping') updateMappingVisibility();
 }
 typeSelect.addEventListener('change', updateVisibility);
 processSelect.addEventListener('change', () => {
@@ -705,6 +778,7 @@ processSelect.addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
   if (typeSelect.value === 'Conversion') updateConversionVisibility();
   if (typeSelect.value === 'Email Productivity') updateEmailProdVisibility();
+  if (typeSelect.value === 'Agent Name Mapping') updateMappingVisibility();
 });
 document.getElementById('auditType').addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
@@ -789,6 +863,14 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
       return;
     }
     requireField('emailCount', 'Emails Sent');
+  } else if (type === 'Agent Name Mapping') {
+    if (val('processName') !== 'ONDC') {
+      msg.textContent = 'Agent Name Mapping is only available for ONDC.';
+      msg.className = 'tf-msg show error';
+      return;
+    }
+    requireField('mappingSparktgAgent', 'SparkTG Agent Name');
+    requireField('mappingSalesforceAgent', 'Salesforce Agent Name');
   }
   if (missingFields.length) {
     msg.textContent = 'Please fill in: ' + missingFields.join(', ');
@@ -866,6 +948,8 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     conversionMobile: type === 'Conversion' ? (val('conversionMobile') || null) : null,
     conversionEmail: type === 'Conversion' ? (val('conversionEmail') || null) : null,
     emailCount: type === 'Email Productivity' && val('emailCount') !== '' ? parseInt(val('emailCount'), 10) : null,
+    sparktgAgentName: type === 'Agent Name Mapping' ? (val('mappingSparktgAgent') || null) : null,
+    salesforceAgentName: type === 'Agent Name Mapping' ? (val('mappingSalesforceAgent') || null) : null,
     scores: Object.keys(scores).length ? scores : null
   };
 
@@ -882,7 +966,16 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error((resBody && resBody.message) ? resBody.message : ('Server responded ' + res.status));
     msg.textContent = 'Entry submitted successfully.';
     msg.className = 'tf-msg show success';
+    // Keep Tracker Type + Process Name so back-to-back entries of the same
+    // kind (e.g. logging several Quality audits in a row) don't force a
+    // re-select every time -- native form.reset() would blank both back to
+    // "Select type...".
+    const preservedType = typeSelect.value;
+    const preservedProcess = processSelect.value;
     document.getElementById('trackerForm').reset();
+    typeSelect.value = preservedType;
+    processSelect.value = preservedProcess;
+    renderAgentOptions(preservedProcess);
     updateVisibility();
     // The webhook responds the instant it receives the request, before its
     // MySQL insert actually runs -- give that a moment to land before refreshing.
