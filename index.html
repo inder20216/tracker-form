@@ -225,13 +225,13 @@
         <div class="tf-section-title"><i class="ti ti-user-check"></i> Agent Name Mapping</div>
         <div id="mappingNotOndc" class="tf-need-process">Agent Name Mapping is only available for ONDC.</div>
         <div class="tf-grid" id="mappingFields">
-          <div class="tf-field full">
+          <div class="tf-field">
             <label>SparkTG Agent Name *</label>
             <select class="form-select w-full" id="mappingSparktgAgent">
               <option value="">Select ONDC as Process to load agents...</option>
             </select>
           </div>
-          <div class="tf-field full">
+          <div class="tf-field">
             <label>Salesforce Agent Name *</label>
             <input type="text" class="form-input w-full" id="mappingSalesforceAgent" placeholder="Exact display name as it appears in Salesforce">
           </div>
@@ -291,7 +291,7 @@
 <script>
 const WEBHOOK_URL = 'https://automation.openmindhelpline.com/webhook/unified-tracker-form';
 const LAST_SUBMISSIONS_URL = 'https://automation.openmindhelpline.com/webhook/tracker-last-submissions';
-const ONDC_AGENT_NAMES_URL = 'https://automation.openmindhelpline.com/webhook/tracker-ondc-agent-names';
+const ONDC_AGENT_NAMES_URL = 'https://inder20216.app.n8n.cloud/webhook/tracker-ondc-agent-names';
 
 /* Microsoft login (MSAL Browser) — auto-fills who filled out the form (audited_by)
    instead of a free-text name field. Same Azure AD app used elsewhere at Open Mind;
