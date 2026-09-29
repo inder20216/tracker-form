@@ -566,7 +566,12 @@ function computeQualityScore() {
       return;
     }
     if (target === 'hangupBy') {
-      if (el.value) { sum += el.value.trim().toLowerCase() === 'agent' ? 0 : 10; count++; }
+      // PSRI is exempt from the Agent-hangup deduction -- always full marks
+      // (10) regardless of who hung up, per explicit request. Must match
+      // the same exception in n8n's Build Tracker Insert node exactly, or
+      // this live preview would show a different number than what actually
+      // gets stored.
+      if (el.value) { sum += (processSelect.value === 'PSRI' || el.value.trim().toLowerCase() !== 'agent') ? 10 : 0; count++; }
       return;
     }
     if (!target && el.type === 'number' && el.value !== '') { sum += Number(el.value); count++; }
