@@ -43,7 +43,13 @@
   #lastSubmissionsPanel .ls-type { font-weight: 700; color: var(--accent); min-width: 88px; flex-shrink: 0; }
   #lastSubmissionsPanel .ls-detail { color: var(--text); flex: 1; }
   #lastSubmissionsPanel .ls-when { color: var(--muted); font-size: 11px; white-space: nowrap; }
-  @media (max-width: 640px) { .tf-grid { grid-template-columns: 1fr; } .tf-auth-banner { flex-direction: column; align-items: stretch; } #lastSubmissionsPanel .ls-row { flex-wrap: wrap; } }
+  .mp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); }
+  .mp-row:first-of-type { border-top: none; }
+  .mp-row-header { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-top: none; padding-bottom: 6px; }
+  .mp-agent { font-size: 13px; font-weight: 600; color: var(--text); }
+  .mp-sf input { width: 100%; }
+  .mp-row.mp-changed { background: rgba(37,99,235,0.05); margin: 0 -10px; padding: 8px 10px; border-radius: 6px; }
+  @media (max-width: 640px) { .tf-grid { grid-template-columns: 1fr; } .mp-row { grid-template-columns: 1fr; gap: 4px; } .tf-auth-banner { flex-direction: column; align-items: stretch; } #lastSubmissionsPanel .ls-row { flex-wrap: wrap; } }
 </style>
 </head>
 <body>
@@ -52,7 +58,7 @@
   <div class="tf-brand">
     <i class="ti ti-clipboard-list"></i>
     <h1>Process Tracker</h1>
-    <p>Log Downtime, Appreciation, Escalation, Quality, Training, Conversion, or Email Productivity entries</p>
+    <p>Log Downtime, Appreciation, Escalation, Quality, Training, Conversion, Email Productivity, or Agent Name Mapping entries</p>
   </div>
 
   <div class="tf-card">
@@ -75,6 +81,8 @@
             <option value="Training">Training</option>
             <option value="Conversion">Conversion</option>
             <option value="Email Productivity">Email Productivity</option>
+            <option value="Agent Name Mapping">Agent Name Mapping</option>
+            <option value="Call Tag Correction">Call Tag Correction</option>
           </select>
         </div>
         <div class="tf-field">
@@ -85,11 +93,11 @@
             <option>ONDC</option><option>Infres</option><option>VMM</option><option>Nihon</option>
           </select>
         </div>
-        <div class="tf-field">
+        <div class="tf-field" id="dateFieldWrap">
           <label id="dateLabel">Date *</label>
           <input type="date" class="form-input w-full" id="date" required>
         </div>
-        <div class="tf-field full">
+        <div class="tf-field full" id="agentNameFieldWrap">
           <label>Agent Name *</label>
           <select class="form-select w-full" id="agentName" required>
             <option value="">Select process first...</option>
@@ -212,6 +220,53 @@
         </div>
       </div>
 
+      <!-- Agent Name Mapping: ONDC only — agents keep a different (often
+           unrelated/pseudonymous) display name in Salesforce so they aren't
+           personally identifiable if feedback comes in negative. This maps
+           that Salesforce name to the real SparkTG identity so reports can
+           reconcile the two systems. Append-only: every submission adds a
+           new row (no update/delete) so historical reports keep resolving
+           against whichever mapping was active at the time, while new
+           reports automatically pick up the latest one for that agent. -->
+      <div class="tf-group" data-type="Agent Name Mapping">
+        <div class="tf-section-title"><i class="ti ti-user-check"></i> Agent Name Mapping</div>
+        <div id="mappingNotOndc" class="tf-need-process">Agent Name Mapping is only available for ONDC.</div>
+        <div id="mappingFields">
+          <div class="mp-row mp-row-header">
+            <div class="mp-agent">SparkTG Agent Name</div>
+            <div class="mp-sf">Salesforce Agent Name</div>
+          </div>
+          <div id="mappingAgentRows">
+            <div class="tf-need-process">Select ONDC as Process to load agents...</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:10px;">
+            Already-mapped agents show their current Salesforce name — only edit the ones that changed
+            (agent left, name reassigned, etc). Rows you don't touch are skipped on submit.
+          </div>
+        </div>
+      </div>
+
+      <!-- Call Tag Correction: ResMed only -- agents sometimes pick the wrong
+           note category (an Outbound call tagged with an Inbound category like
+           "Sales Lead", or an Inbound call tagged with an Outbound "OB - ..."
+           category). Lists calls still needing review (live, excludes anything
+           already corrected) and lets the TL pick one + the correct category. -->
+      <div class="tf-group" data-type="Call Tag Correction">
+        <div class="tf-section-title"><i class="ti ti-adjustments"></i> Call Tag Correction</div>
+        <div id="tagCorrectionNotResmed" class="tf-need-process">Call Tag Correction is only available for ResMed.</div>
+        <div id="tagCorrectionFields">
+          <div id="tagCorrectionRows"><div class="tf-need-process">Select ResMed as Process to load flagged calls...</div></div>
+          <div class="tf-grid" id="tagCorrectionPickFields" style="margin-top:12px;display:none;">
+            <div class="tf-field full"><label>Corrected Category *</label>
+              <select class="form-select w-full" id="correctedCategory">
+                <option value="">—</option>
+              </select>
+            </div>
+            <div class="tf-field full"><label>Remarks</label><input type="text" class="form-input w-full" id="tagCorrectionRemarks"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Appreciation / Escalation: Process + Date + Agent (above) + total count for that agent/date -->
       <div class="tf-group" data-type="Appreciation,Escalation">
         <div class="tf-section-title"><i class="ti ti-hash"></i> Count</div>
@@ -265,6 +320,8 @@
 <script>
 const WEBHOOK_URL = 'https://automation.openmindhelpline.com/webhook/unified-tracker-form';
 const LAST_SUBMISSIONS_URL = 'https://automation.openmindhelpline.com/webhook/tracker-last-submissions';
+const ONDC_AGENT_NAMES_URL = 'https://automation.openmindhelpline.com/webhook/tracker-ondc-agent-names';
+const RESMED_FLAGGED_TAGS_URL = 'https://automation.openmindhelpline.com/webhook/resmed-flagged-tags';
 
 /* Microsoft login (MSAL Browser) — auto-fills who filled out the form (audited_by)
    instead of a free-text name field. Same Azure AD app used elsewhere at Open Mind;
@@ -433,9 +490,13 @@ const FACILITY_RUBRIC_WITH_COMPLAINT = [...FACILITY_RUBRIC,
   { id: 'complaint_no', label: 'Complaint Number', type: 'text' },
   { id: 'call_regarding', label: 'Call/Query Regarding', type: 'select', options: ['Logged', 'Process Enquiry', 'Case Resolved', 'Non-Relevant'] }
 ];
+// PSRI shares FACILITY_RUBRIC too, but Hangup By isn't relevant for PSRI's
+// calls -- own variant with that field dropped, rather than changing the
+// base array (same reasoning as FACILITY_RUBRIC_WITH_COMPLAINT above).
+const FACILITY_RUBRIC_NO_HANGUP = FACILITY_RUBRIC.filter(f => f.id !== 'hangup_by');
 const QUALITY_RUBRIC = {
   Infres: FACILITY_RUBRIC_WITH_COMPLAINT, VMM: FACILITY_RUBRIC_WITH_COMPLAINT, Nihon: FACILITY_RUBRIC_WITH_COMPLAINT,
-  PSRI: FACILITY_RUBRIC,
+  PSRI: FACILITY_RUBRIC_NO_HANGUP,
   ResMed: [
     { id: 'opening_script', label: 'Call Opening / Script (Greetings/Self & Comp Intro/Script/Hold & Unhold & Transfer/Closing Statement) (0-10)' },
     { id: 'process_knowledge', label: 'Process Knowledge/Protocols (RM-Domain/OM-Process Knowledge) (0-10)' },
@@ -532,6 +593,9 @@ function computeQualityScore() {
       return;
     }
     if (target === 'hangupBy') {
+      // PSRI never renders this field at all (see FACILITY_RUBRIC_NO_HANGUP)
+      // -- it's not relevant to PSRI's calls -- so this branch only runs for
+      // the other Facility-rubric processes now.
       if (el.value) { sum += el.value.trim().toLowerCase() === 'agent' ? 0 : 10; count++; }
       return;
     }
@@ -628,13 +692,13 @@ function renderQualityFields(processName) {
 // truncated names, short-form vs full-form spellings) that turned into a
 // one-off quality_audit cleanup this session.
 const AGENTS_BY_PROCESS = {
-  Baxter: ['Ansha', 'Komala', 'Mouli', 'Rashmi', 'Sarita'],
+  Baxter: ['Ansha', 'Komala', 'Mouli', 'Murugesh', 'Rashmi', 'Sarita'],
   PSRI: ['Abhishek Raj', 'Abhishek Sharma', 'Anchal Singh', 'Kavneet Kaur', 'Monika Rani', 'Sameer', 'Shivani khandelwal', 'Suraj'],
   LOTS: ['Akshat Sharma', 'Kajal Bhagel', 'Navjot Singh', 'Piyush Sharma', 'Suvika Chauhan', 'Vivek Prajapati'],
   Infres: ['Monika Kumari', 'Rishi Chaudhari'],
   VMM: ['Mahima Mishra', 'Rahul Pandey', 'Sachin Yadav', 'Sanskar Tiwari', 'Yogesh Malik'],
   Nihon: ['Anish', 'Somansh', 'Yakoob'],
-  ResMed: ['Avijit Dey', 'Gulshan Khan', 'Kumkum', 'Sagarika Bose'],
+  ResMed: ['Avijit Dey', 'Gulshan Khan', 'Mohit Kumar', 'Sagarika Bose'],
   ONDC: ['Asha Yadav', 'MD NIZAM MANSOORI', 'Manjur', 'Sahil D', 'Sahil K', 'Shweta Kumari']
 };
 
@@ -687,6 +751,137 @@ function updateEmailProdVisibility() {
   document.getElementById('emailProdFields').classList.toggle('tf-hidden', !allowed);
 }
 
+// Agent Name Mapping: SparkTG agent names are fetched live (not a hardcoded
+// roster like AGENTS_BY_PROCESS) so a new/changed agent shows up here as soon
+// as they appear in the synced data, with no code deploy needed. Cached per
+// page load -- the list only changes daily at most.
+// Each entry: { sparktg_agent_name, salesforce_agent_name (current mapping, or
+// null if never mapped) }. Cached per page load -- refetch on demand via the
+// Process dropdown re-trigger if it's ever stale within a session (rare).
+let ondcAgentMappingsCache = null;
+async function fetchOndcAgentMappings() {
+  if (ondcAgentMappingsCache) return ondcAgentMappingsCache;
+  try {
+    const res = await fetch(ONDC_AGENT_NAMES_URL);
+    if (!res.ok) throw new Error(`Agent names API ${res.status}`);
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+    ondcAgentMappingsCache = rows;
+    return rows;
+  } catch (err) {
+    console.error('fetchOndcAgentMappings failed:', err);
+    return null; // distinct from [] (empty-but-successful) so the caller can tell the two apart
+  }
+}
+async function renderMappingAgentRows() {
+  const container = document.getElementById('mappingAgentRows');
+  container.innerHTML = '<div class="tf-need-process">Loading agents…</div>';
+  const rows = await fetchOndcAgentMappings();
+  if (rows === null) { container.innerHTML = '<div class="tf-need-process">Failed to load agents — try again.</div>'; return; }
+  if (!rows.length) { container.innerHTML = '<div class="tf-need-process">No recent ONDC agents found.</div>'; return; }
+
+  container.innerHTML = rows.map((r, i) => `
+    <div class="mp-row" id="mp-row-${i}">
+      <div class="mp-agent">${r.sparktg_agent_name}</div>
+      <div class="mp-sf">
+        <input type="text" class="form-input" id="mp-sf-${i}"
+          data-agent="${r.sparktg_agent_name.replace(/"/g, '&quot;')}"
+          data-original="${(r.salesforce_agent_name || '').replace(/"/g, '&quot;')}"
+          value="${(r.salesforce_agent_name || '').replace(/"/g, '&quot;')}"
+          placeholder="Not mapped yet">
+      </div>
+    </div>`).join('');
+
+  // Highlight rows the user actually edits, so it's obvious at a glance what
+  // will actually get submitted (unchanged rows are skipped entirely).
+  container.querySelectorAll('.mp-sf input').forEach(input => {
+    input.addEventListener('input', () => {
+      const changed = input.value !== input.dataset.original;
+      input.closest('.mp-row').classList.toggle('mp-changed', changed);
+    });
+  });
+}
+function updateMappingVisibility() {
+  const isOndc = processSelect.value === 'ONDC';
+  document.getElementById('mappingNotOndc').style.display = isOndc ? 'none' : 'block';
+  document.getElementById('mappingFields').classList.toggle('tf-hidden', !isOndc);
+  if (isOndc) renderMappingAgentRows();
+}
+// Collects only the rows the user actually edited (value !== the value it
+// loaded with) -- this is what "skip unchanged rows" / "no duplicate rows
+// added" means in practice: an untouched row never gets submitted at all.
+function getChangedMappings() {
+  const changed = [];
+  document.querySelectorAll('#mappingAgentRows .mp-sf input').forEach(input => {
+    const val = input.value.trim();
+    if (val !== '' && val !== input.dataset.original) {
+      changed.push({ sparktgAgentName: input.dataset.agent, salesforceAgentName: val });
+    }
+  });
+  return changed;
+}
+
+// Call Tag Correction: live list of ResMed calls whose note category doesn't
+// match call_type, excluding anything already corrected (server-side LEFT
+// JOIN against call_tag_corrections). Cached per page load like the ONDC
+// mapping list -- invalidated after a successful submit so the just-fixed
+// call drops off the list immediately.
+const OUTBOUND_CATEGORIES = ['OB - Fresh HST Follow Ups', 'OB - Fresh HST', 'OB - Call Back on Missed Calls',
+  'OB - Inaudible or Disconnected Calls', 'OB - AV Registration', 'OB - AirSense 11 Upselling',
+  'OB - AirMini Upselling', 'OB - Feedback Calls', 'Other Outbound Calls'];
+const INBOUND_CATEGORIES = ['Sales Lead', 'Service Query', 'Rewards & Registration', 'Non Customer Query', 'Other Inbound', 'Handled by Sales Team'];
+
+let flaggedTagsCache = null;
+let selectedFlaggedCall = null;
+async function fetchFlaggedTags() {
+  if (flaggedTagsCache) return flaggedTagsCache;
+  try {
+    const to = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+    const res = await fetch(`${RESMED_FLAGGED_TAGS_URL}?from=${from}&to=${to}`);
+    if (!res.ok) throw new Error(`Flagged tags API ${res.status}`);
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+    flaggedTagsCache = rows;
+    return rows;
+  } catch (err) {
+    console.error('fetchFlaggedTags failed:', err);
+    return null;
+  }
+}
+function selectFlaggedCall(row, el) {
+  selectedFlaggedCall = row;
+  document.querySelectorAll('#tagCorrectionRows .mp-row').forEach(r => r.classList.remove('mp-changed'));
+  el.classList.add('mp-changed');
+  const sel = document.getElementById('correctedCategory');
+  const options = row.call_type === 'OUTBOUND' ? OUTBOUND_CATEGORIES : INBOUND_CATEGORIES;
+  sel.innerHTML = '<option value="">—</option>' + options.map(c => `<option>${c}</option>`).join('');
+  document.getElementById('tagCorrectionPickFields').style.display = '';
+}
+async function renderFlaggedTagRows() {
+  const container = document.getElementById('tagCorrectionRows');
+  container.innerHTML = '<div class="tf-need-process">Loading flagged calls…</div>';
+  document.getElementById('tagCorrectionPickFields').style.display = 'none';
+  selectedFlaggedCall = null;
+  const rows = await fetchFlaggedTags();
+  if (rows === null) { container.innerHTML = '<div class="tf-need-process">Failed to load flagged calls — try again.</div>'; return; }
+  if (!rows.length) { container.innerHTML = '<div class="tf-need-process">No calls currently flagged for correction.</div>'; return; }
+
+  container.innerHTML = '<div class="mp-row mp-row-header"><div class="mp-agent">Call</div><div class="mp-sf">Current Category</div></div>' +
+    rows.map((r, i) => `
+    <div class="mp-row" id="ftc-row-${i}" style="cursor:pointer;" onclick="selectFlaggedCall(window.__flaggedRows[${i}], document.getElementById('ftc-row-${i}'))">
+      <div class="mp-agent">${r.call_date} · ${r.call_type} · ${(r.received_by || '').split(',')[0].trim()}${r.recording_url ? ` · <a href="${r.recording_url}" target="_blank" onclick="event.stopPropagation()">Listen</a>` : ''}</div>
+      <div class="mp-sf">${r.category}</div>
+    </div>`).join('');
+  window.__flaggedRows = rows;
+}
+function updateCallTagCorrectionVisibility() {
+  const isResmed = processSelect.value === 'ResMed';
+  document.getElementById('tagCorrectionNotResmed').style.display = isResmed ? 'none' : 'block';
+  document.getElementById('tagCorrectionFields').classList.toggle('tf-hidden', !isResmed);
+  if (isResmed) renderFlaggedTagRows();
+}
+
 function updateVisibility() {
   const t = typeSelect.value;
   groups.forEach(g => {
@@ -694,10 +889,22 @@ function updateVisibility() {
     g.classList.toggle('tf-hidden', !(t && types.includes(t)));
   });
   document.getElementById('dateLabel').textContent = (t === 'Quality' ? 'Date of Call' : t === 'Conversion' ? 'Payment Date' : 'Date') + ' *';
+  // Agent Name Mapping doesn't use the shared Date/Agent Name fields at the
+  // top -- it has its own SparkTG dropdown, and the row is timestamped
+  // automatically. Hide them AND drop the native `required` attribute, or a
+  // hidden-but-required field silently blocks submission.
+  const isMapping = t === 'Agent Name Mapping' || t === 'Call Tag Correction';
+  document.getElementById('dateFieldWrap').classList.toggle('tf-hidden', isMapping);
+  document.getElementById('date').required = !isMapping;
+  document.getElementById('agentNameFieldWrap').classList.toggle('tf-hidden', isMapping);
+  const agentEl = document.getElementById('agentName');
+  if (agentEl) agentEl.required = !isMapping;
   if (t === 'Quality') renderQualityFields(processSelect.value);
   if (t === 'Appreciation' || t === 'Escalation') updateReceivedViaVisibility();
   if (t === 'Conversion') updateConversionVisibility();
   if (t === 'Email Productivity') updateEmailProdVisibility();
+  if (t === 'Agent Name Mapping') updateMappingVisibility();
+  if (t === 'Call Tag Correction') updateCallTagCorrectionVisibility();
 }
 typeSelect.addEventListener('change', updateVisibility);
 processSelect.addEventListener('change', () => {
@@ -705,6 +912,8 @@ processSelect.addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
   if (typeSelect.value === 'Conversion') updateConversionVisibility();
   if (typeSelect.value === 'Email Productivity') updateEmailProdVisibility();
+  if (typeSelect.value === 'Agent Name Mapping') updateMappingVisibility();
+  if (typeSelect.value === 'Call Tag Correction') updateCallTagCorrectionVisibility();
 });
 document.getElementById('auditType').addEventListener('change', () => {
   if (typeSelect.value === 'Quality') renderQualityFields(processSelect.value);
@@ -789,6 +998,29 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
       return;
     }
     requireField('emailCount', 'Emails Sent');
+  } else if (type === 'Agent Name Mapping') {
+    if (val('processName') !== 'ONDC') {
+      msg.textContent = 'Agent Name Mapping is only available for ONDC.';
+      msg.className = 'tf-msg show error';
+      return;
+    }
+    if (!getChangedMappings().length) {
+      msg.textContent = 'No changes to submit — edit at least one Salesforce Agent Name.';
+      msg.className = 'tf-msg show error';
+      return;
+    }
+  } else if (type === 'Call Tag Correction') {
+    if (val('processName') !== 'ResMed') {
+      msg.textContent = 'Call Tag Correction is only available for ResMed.';
+      msg.className = 'tf-msg show error';
+      return;
+    }
+    if (!selectedFlaggedCall) {
+      msg.textContent = 'Select a flagged call to correct.';
+      msg.className = 'tf-msg show error';
+      return;
+    }
+    requireField('correctedCategory', 'Corrected Category');
   }
   if (missingFields.length) {
     msg.textContent = 'Please fill in: ' + missingFields.join(', ');
@@ -866,8 +1098,15 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     conversionMobile: type === 'Conversion' ? (val('conversionMobile') || null) : null,
     conversionEmail: type === 'Conversion' ? (val('conversionEmail') || null) : null,
     emailCount: type === 'Email Productivity' && val('emailCount') !== '' ? parseInt(val('emailCount'), 10) : null,
+    mappings: type === 'Agent Name Mapping' ? getChangedMappings() : null,
+    txnId: type === 'Call Tag Correction' && selectedFlaggedCall ? selectedFlaggedCall.txn_id : null,
+    callDate: type === 'Call Tag Correction' && selectedFlaggedCall ? selectedFlaggedCall.call_date : null,
+    callType: type === 'Call Tag Correction' && selectedFlaggedCall ? selectedFlaggedCall.call_type : null,
+    originalCategory: type === 'Call Tag Correction' && selectedFlaggedCall ? selectedFlaggedCall.category : null,
+    correctedCategory: type === 'Call Tag Correction' ? (val('correctedCategory') || null) : null,
     scores: Object.keys(scores).length ? scores : null
   };
+  if (type === 'Call Tag Correction') payload.remarks = val('tagCorrectionRemarks') || null;
 
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader-2"></i> Submitting...';
@@ -882,7 +1121,20 @@ document.getElementById('trackerForm').addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error((resBody && resBody.message) ? resBody.message : ('Server responded ' + res.status));
     msg.textContent = 'Entry submitted successfully.';
     msg.className = 'tf-msg show success';
+    // Keep Tracker Type + Process Name so back-to-back entries of the same
+    // kind (e.g. logging several Quality audits in a row) don't force a
+    // re-select every time -- native form.reset() would blank both back to
+    // "Select type...".
+    const preservedType = typeSelect.value;
+    const preservedProcess = processSelect.value;
+    // Mapping rows are pre-filled from a cached fetch -- invalidate it so the
+    // re-render after this submit shows the values just saved, not stale ones.
+    if (preservedType === 'Agent Name Mapping') ondcAgentMappingsCache = null;
+    if (preservedType === 'Call Tag Correction') flaggedTagsCache = null;
     document.getElementById('trackerForm').reset();
+    typeSelect.value = preservedType;
+    processSelect.value = preservedProcess;
+    renderAgentOptions(preservedProcess);
     updateVisibility();
     // The webhook responds the instant it receives the request, before its
     // MySQL insert actually runs -- give that a moment to land before refreshing.
